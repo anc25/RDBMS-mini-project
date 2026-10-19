@@ -12,10 +12,15 @@ export const metadata = {
   description: "Report lost items, browse found items, claim and get them back.",
 };
 
+// Applied before first paint so a dark-mode reload has no white flash.
+// Static constant string (no user data), so dangerouslySetInnerHTML is safe.
+const themeInitScript = `(function(){try{var t=localStorage.getItem("lf-theme");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}if(t==="dark"){document.documentElement.setAttribute("data-theme","dark");}}catch(e){}})();`;
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- false positive: App Router layouts are shared, this loads on every page */}

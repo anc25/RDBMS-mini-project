@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getMe, logout } from "@/lib/api";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -99,6 +100,7 @@ export default function Navbar() {
           </ul>
           <div className="d-flex align-items-center gap-2">
             {user && <span className="text-muted small me-1">{user.name}</span>}
+            <ThemeToggle />
             <button className="btn btn-outline-secondary btn-sm" type="button" onClick={onLogout}>
               Logout
             </button>

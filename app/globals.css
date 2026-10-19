@@ -25,6 +25,30 @@
 
   --lf-radius: 3px;
   --lf-font: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+
+  color-scheme: light;
+}
+
+/* Dark theme: only the variables change; components below follow them.
+   Set on <html> via data-theme="dark" (see components/ThemeToggle.js). */
+[data-theme="dark"] {
+  --lf-paper: #111113;
+  --lf-surface: #19191c;
+  --lf-ink: #eceae2;
+  --lf-muted: #9c9a8f;
+  --lf-hair: #2b2b2e;
+  --lf-accent: #3db3a4;
+  --lf-accent-ink: #5cc7b9;
+  --lf-wash: #202024;
+
+  color-scheme: dark;
+}
+
+/* The dark accent is brighter, so accent-filled surfaces take ink text. */
+[data-theme="dark"] .btn-accent,
+[data-theme="dark"] .btn-success,
+[data-theme="dark"] .progress-bar {
+  color: var(--lf-paper);
 }
 
 /* ---------- base ---------- */
@@ -45,6 +69,28 @@ body {
   font-size: 0.95rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Smooth colour change when the theme toggles */
+.card,
+.navbar,
+.form-control,
+.form-select,
+thead th,
+.list-group-item,
+.alert {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Bootstrap utility colours used in our markup map onto theme variables
+   so dark mode works without editing every page (card headers, table heads). */
+.bg-white {
+  background: var(--lf-surface) !important;
+}
+.table-light {
+  --bs-table-bg: var(--lf-wash);
+  --bs-table-color: var(--lf-ink);
 }
 
 ::selection {
@@ -484,6 +530,34 @@ thead th {
 
 .lf-landing {
   padding-top: 2.5rem;
+  position: relative;
+}
+.lf-theme-float {
+  position: absolute;
+  top: 2.2rem;
+  right: 0;
+}
+
+/* theme toggle button (icon only).
+   CSS decides which icon shows: moon in light mode, sun in dark mode. */
+.lf-theme-toggle {
+  padding: 0.32rem 0.5rem;
+  line-height: 0;
+  color: var(--lf-ink);
+}
+.lf-theme-toggle svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.lf-theme-toggle .lf-icon-sun {
+  display: none;
+}
+[data-theme="dark"] .lf-theme-toggle .lf-icon-sun {
+  display: block;
+}
+[data-theme="dark"] .lf-theme-toggle .lf-icon-moon {
+  display: none;
 }
 .lf-eyebrow {
   display: flex;

@@ -8,11 +8,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { login, register } from "@/lib/api";
 import { showToast } from "@/lib/toast";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function LandingPage() {
   const [tab, setTab] = useState("login"); // "login" | "register"
   return (
     <div className="lf-landing">
+      <div className="lf-theme-float">
+        <ThemeToggle />
+      </div>
       <div className="row g-5 align-items-start">
         <div className="col-lg-7">
           <section className="lf-rise">
