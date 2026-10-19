@@ -63,13 +63,20 @@ body {
 }
 body {
   min-height: 100%;
-  background-color: var(--lf-paper);
-  color: var(--lf-ink);
   font-family: var(--lf-font);
   font-size: 0.95rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* html body (specificity 0-0-2 with the element selector) wins over the
+   Bootstrap CDN stylesheet, which loads after globals.css and styles body
+   with the same specificity - this is what makes the page BACKGROUND
+   (and body text colour) follow the theme in dark mode. */
+html body {
+  background-color: var(--lf-paper);
+  color: var(--lf-ink);
 }
 
 /* Smooth colour change when the theme toggles */
@@ -389,6 +396,8 @@ a:hover .card .card-title {
 
 .table {
   --bs-table-border-color: var(--lf-hair);
+  --bs-table-bg: transparent;   /* cells show the card / page surface */
+  --bs-table-color: var(--lf-ink);
   margin-bottom: 0;
 }
 thead th {

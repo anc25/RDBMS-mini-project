@@ -18,7 +18,10 @@ const themeInitScript = `(function(){try{var t=localStorage.getItem("lf-theme");
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the theme script runs before React hydrates
+    // and may add data-theme="dark" to <html>, so the served HTML and the
+    // hydrated DOM differ by design on this one element.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
