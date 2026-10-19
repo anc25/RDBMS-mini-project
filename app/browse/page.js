@@ -139,7 +139,7 @@ function BrowseBody() {
           </div>
         </div>
       ) : items.length === 0 ? (
-        <div className="alert alert-light border text-center">
+        <div className="alert border text-center">
           No found items match these filters yet. Try clearing the keyword or dates.
         </div>
       ) : (

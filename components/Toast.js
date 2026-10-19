@@ -28,15 +28,15 @@ export default function ToastHost() {
 
   if (!toast) return null;
 
-  const colorClass = toast.type === "error" ? "text-bg-danger" : "text-bg-success";
+  const kindClass = toast.type === "error" ? "lf-toast-error" : "lf-toast-success";
   return (
     <div className="toast-container position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
-      <div className={`toast show align-items-center border-0 ${colorClass}`} role="alert" aria-live="assertive" aria-atomic="true">
+      <div className={`toast show align-items-center border-0 lf-toast ${kindClass}`} role="alert" aria-live="assertive" aria-atomic="true">
         <div className="d-flex">
           <div className="toast-body">{toast.message}</div>
           <button
             type="button"
-            className="btn-close btn-close-white me-2 m-auto"
+            className="btn-close me-2 m-auto"
             aria-label="Close notification"
             onClick={() => setToast(null)}
           ></button>

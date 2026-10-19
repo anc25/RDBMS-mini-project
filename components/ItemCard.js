@@ -14,7 +14,7 @@ export default function ItemCard({ item }) {
             <h5 className="card-title mb-0">{item.title}</h5>
             <StatusBadge status={item.status} />
           </div>
-          <span className="badge text-bg-light border align-self-start mb-2">{item.category}</span>
+          <span className="badge bg-body-tertiary text-body-secondary border align-self-start mb-2">{item.category}</span>
           <p className="card-text small mb-1">
             <strong>Found at:</strong> {item.location}
           </p>

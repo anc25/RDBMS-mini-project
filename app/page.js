@@ -48,7 +48,7 @@ export default function LandingPage() {
         </div>
         <div className="col-lg-5">
           <section className="lf-auth-card card lf-rise lf-rise-2" aria-label="Login or register">
-            <div className="card-header bg-white">
+            <div className="card-header bg-body">
               <ul className="nav nav-pills" role="tablist">
                 <li className="nav-item" role="presentation">
                   <button

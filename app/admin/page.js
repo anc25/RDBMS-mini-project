@@ -149,12 +149,12 @@ function ClaimQueue() {
       {claims === null ? (
         <Loading />
       ) : claims.length === 0 ? (
-        <div className="alert alert-light border">No claims here right now.</div>
+        <div className="alert border">No claims here right now.</div>
       ) : (
         <div className="card shadow-sm">
           <div className="table-responsive">
             <table className="table align-middle mb-0">
-              <thead className="table-light">
+              <thead>
                 <tr>
                   <th scope="col">#</th>
                   <th scope="col">Claimant</th>
@@ -277,7 +277,7 @@ function StatsTab() {
       <div className="row g-3">
         <div className="col-lg-6">
           <div className="card shadow-sm h-100">
-            <div className="card-header bg-white fw-semibold">Hotspot locations (lost reports)</div>
+            <div className="card-header bg-body fw-semibold">Hotspot locations (lost reports)</div>
             <ul className="list-group list-group-flush">
               {stats.hotspots.map((h) => (
                 <li key={h.location} className="list-group-item d-flex align-items-center gap-3">
@@ -295,10 +295,10 @@ function StatsTab() {
 
         <div className="col-lg-6">
           <div className="card shadow-sm h-100">
-            <div className="card-header bg-white fw-semibold">Reports by category (open / resolved)</div>
+            <div className="card-header bg-body fw-semibold">Reports by category (open / resolved)</div>
             <div className="table-responsive">
               <table className="table table-sm mb-0 align-middle">
-                <thead className="table-light">
+                <thead>
                   <tr>
                     <th scope="col">Category</th>
                     <th scope="col" className="text-center">Open</th>
@@ -321,10 +321,10 @@ function StatsTab() {
 
         <div className="col-12">
           <div className="card shadow-sm">
-            <div className="card-header bg-white fw-semibold">Items unclaimed for more than 30 days</div>
+            <div className="card-header bg-body fw-semibold">Items unclaimed for more than 30 days</div>
             <div className="table-responsive">
               <table className="table table-sm mb-0 align-middle">
-                <thead className="table-light">
+                <thead>
                   <tr>
                     <th scope="col">Item</th>
                     <th scope="col" className="text-end">Days unclaimed</th>
@@ -384,12 +384,12 @@ function AuditTab() {
 
   return (
     <div className="card shadow-sm">
-      <div className="card-header bg-white fw-semibold">
+      <div className="card-header bg-body fw-semibold">
         Audit log <span className="text-muted small ms-1">(written by the database triggers)</span>
       </div>
       <div className="table-responsive">
         <table className="table table-sm align-middle mb-0">
-          <thead className="table-light">
+          <thead>
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Table</th>

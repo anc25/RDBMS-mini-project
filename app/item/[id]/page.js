@@ -107,7 +107,7 @@ function ItemBody() {
               <h1 className="h3 mb-1">{item.title}</h1>
               <StatusBadge status={item.status} />
             </div>
-            <span className="badge text-bg-light border mb-3">{item.category}</span>
+            <span className="badge bg-body-tertiary text-body-secondary border mb-3">{item.category}</span>
             <dl className="row mb-0">
               <dt className="col-sm-4">Found at</dt>
               <dd className="col-sm-8">{item.location}</dd>
@@ -123,7 +123,7 @@ function ItemBody() {
 
         {claimable ? (
           <div className="card shadow-sm">
-            <div className="card-header bg-white fw-semibold">Claim this item</div>
+            <div className="card-header bg-body fw-semibold">Claim this item</div>
             <div className="card-body">
               <form onSubmit={onClaim} noValidate>
                 <div className="mb-3">
@@ -164,7 +164,7 @@ function ItemBody() {
             </div>
           </div>
         ) : (
-          <div className="alert alert-light border d-flex align-items-center gap-2">
+          <div className="alert border d-flex align-items-center gap-2">
             <StatusBadge status={item.status} />
             <span>
               {item.status === "claimed"

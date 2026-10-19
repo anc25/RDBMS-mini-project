@@ -1,13 +1,14 @@
 "use client";
 
 // components/ThemeToggle.js
-// Light/dark switch. Clicking flips data-theme on <html> and remembers the
-// choice in localStorage ("lf-theme"). app/globals.css swaps every colour
-// from that attribute - and also picks which icon (sun/moon) is visible,
-// so this component needs no React state at all.
+// Light/dark switch using Bootstrap 5.3 colour modes: it flips the
+// data-bs-theme attribute ("light"/"dark") on <html>, remembers the choice
+// in localStorage, and CSS picks which icon (sun/moon) is visible, so the
+// component needs no React state at all.
 //
 // The theme is applied BEFORE first paint by a tiny inline script in
-// app/layout.js, so a dark-mode reload has no white flash.
+// app/layout.js, so a dark-mode reload has no white flash. Storage access
+// is wrapped in try/catch so private-browsing mode still works.
 
 const SunIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -22,15 +23,17 @@ const MoonIcon = () => (
   </svg>
 );
 
+const STORAGE_KEY = "lf-theme";
+
 export default function ThemeToggle() {
   function toggle() {
     const root = document.documentElement;
-    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
+    const next = root.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-bs-theme", next);
     try {
-      localStorage.setItem("lf-theme", next);
+      localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      // Private mode may block storage; the theme still works for this visit.
+      // Storage may be unavailable; the theme still works for this visit.
     }
   }
 

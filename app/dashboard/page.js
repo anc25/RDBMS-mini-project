@@ -67,7 +67,7 @@ function DashboardBody({ user }) {
       </div>
 
       <div className="card shadow-sm">
-        <div className="card-header bg-white fw-semibold">Recent possible matches</div>
+        <div className="card-header bg-body fw-semibold">Recent possible matches</div>
         <div className="card-body">
           {recentMatches.length === 0 ? (
             <p className="text-muted mb-0">

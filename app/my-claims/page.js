@@ -51,7 +51,7 @@ function ClaimsBody() {
   }
   if (claims.length === 0) {
     return (
-      <div className="alert alert-light border">
+      <div className="alert border">
         You have not claimed anything yet. Found your item in <Link href="/browse">Browse</Link>?
       </div>
     );
@@ -61,7 +61,7 @@ function ClaimsBody() {
     <div className="card shadow-sm">
       <div className="table-responsive">
         <table className="table align-middle mb-0">
-          <thead className="table-light">
+          <thead>
             <tr>
               <th scope="col">#</th>
               <th scope="col">Item</th>

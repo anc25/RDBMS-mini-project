@@ -13,13 +13,14 @@ export const metadata = {
 };
 
 // Applied before first paint so a dark-mode reload has no white flash.
-// Static constant string (no user data), so dangerouslySetInnerHTML is safe.
-const themeInitScript = `(function(){try{var t=localStorage.getItem("lf-theme");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}if(t==="dark"){document.documentElement.setAttribute("data-theme","dark");}}catch(e){}})();`;
+// Saved choice first, else follow the system setting. Static constant
+// string (no user data), so dangerouslySetInnerHTML is safe here.
+const themeInitScript = `(function(){var t=null;try{t=localStorage.getItem("lf-theme");}catch(e){}if(t!=="dark"&&t!=="light"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.setAttribute("data-bs-theme",t);})();`;
 
 export default function RootLayout({ children }) {
   return (
     // suppressHydrationWarning: the theme script runs before React hydrates
-    // and may add data-theme="dark" to <html>, so the served HTML and the
+    // and sets data-bs-theme on <html>, so the served HTML and the
     // hydrated DOM differ by design on this one element.
     <html lang="en" suppressHydrationWarning>
       <head>

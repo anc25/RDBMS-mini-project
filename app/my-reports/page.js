@@ -105,7 +105,7 @@ function ReportsBody() {
   }
   if (reports.length === 0) {
     return (
-      <div className="alert alert-light border">
+      <div className="alert border">
         You have not reported any lost items yet.{" "}
         <Link href="/report-lost">Report one now</Link>.
       </div>
@@ -116,7 +116,7 @@ function ReportsBody() {
     <div className="card shadow-sm">
       <div className="table-responsive">
         <table className="table table-hover align-middle mb-0">
-          <thead className="table-light">
+          <thead>
             <tr>
               <th scope="col">Title</th>
               <th scope="col">Category</th>
@@ -184,7 +184,7 @@ function ReportRows({ report, expanded, matchList, busy, onToggle, onRerun, onCl
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} className="bg-light">
+          <td colSpan={7} className="bg-body-tertiary">
             {!matchList ? (
               <span className="text-muted small">Loading matches...</span>
             ) : matchList.length === 0 ? (
@@ -194,7 +194,7 @@ function ReportRows({ report, expanded, matchList, busy, onToggle, onRerun, onCl
             ) : (
               <ul className="list-group list-group-flush">
                 {matchList.map((m) => (
-                  <li key={m.match_id} className="list-group-item bg-light">
+                  <li key={m.match_id} className="list-group-item bg-body-tertiary">
                     <div className="d-flex justify-content-between align-items-center">
                       <div>
                         <Link href={`/item/${m.item_id}`} className="fw-semibold">

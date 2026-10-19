@@ -55,7 +55,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="navbar navbar-expand-lg bg-white border-bottom shadow-sm">
+    <nav className="navbar navbar-expand-lg bg-body border-bottom">
       <div className="container">
         <Link className="navbar-brand lf-brand" href="/dashboard">
           <span className="lf-mark" aria-hidden="true"></span>
