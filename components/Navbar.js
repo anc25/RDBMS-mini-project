@@ -56,7 +56,8 @@ export default function Navbar() {
   return (
     <nav className="navbar navbar-expand-lg bg-white border-bottom shadow-sm">
       <div className="container">
-        <Link className="navbar-brand fw-bold text-accent" href="/dashboard">
+        <Link className="navbar-brand lf-brand" href="/dashboard">
+          <span className="lf-mark" aria-hidden="true"></span>
           Campus Lost &amp; Found
         </Link>
         <button

@@ -1,7 +1,7 @@
 "use client";
 
 // app/page.js
-// Landing page: hero + tagline, and Login / Register tabs (plain React
+// Landing page: typographic hero + Login / Register tabs (plain React
 // state - no Bootstrap JS). On success the user is sent to /dashboard.
 
 import { useRouter } from "next/navigation";
@@ -12,56 +12,68 @@ import { showToast } from "@/lib/toast";
 export default function LandingPage() {
   const [tab, setTab] = useState("login"); // "login" | "register"
   return (
-    <div className="row justify-content-center align-items-center g-4">
-      <div className="col-lg-6">
-        <div className="hero p-5">
-          <h1 className="fw-bold">Campus Lost &amp; Found</h1>
-          <p className="lead mt-3">
-            Lost something on campus? Someone has probably found it. Report it, get
-            matched, submit a claim and collect it from the campus office.
-          </p>
-          <ul className="list-unstyled mt-4 mb-0 small">
-            <li className="mb-1">1. Report a lost item or a found item</li>
-            <li className="mb-1">2. We suggest possible matches automatically</li>
-            <li className="mb-1">3. Claim the item and the admin verifies it</li>
-          </ul>
+    <div className="lf-landing">
+      <div className="row g-5 align-items-start">
+        <div className="col-lg-7">
+          <section className="lf-rise">
+            <p className="lf-eyebrow micro">
+              <span className="lf-mark" aria-hidden="true"></span>
+              Campus Lost &amp; Found
+            </p>
+            <h1 className="lf-display">
+              Lost it on campus.
+              <br />
+              Someone probably found it<span className="lf-dot">.</span>
+            </h1>
+            <p className="lf-sub">
+              Report what you lost, browse what has been handed in, submit a claim
+              and collect it from the campus office. Matches are scored
+              automatically; an admin verifies every claim.
+            </p>
+            <ol className="lf-steps">
+              <li><span>01</span>Report a lost item or a found item</li>
+              <li><span>02</span>We suggest possible matches automatically</li>
+              <li><span>03</span>Claim the item - the admin verifies it</li>
+            </ol>
+            <div className="lf-demo-note">
+              <span className="micro">Demo logins</span>
+              <span><code>user@test.com</code> / user123 &nbsp;&middot;&nbsp; student</span>
+              <span><code>admin@test.com</code> / admin123 &nbsp;&middot;&nbsp; admin</span>
+            </div>
+          </section>
         </div>
-        <div className="alert alert-light border mt-3 small mb-0">
-          <strong>Demo logins:</strong> user@test.com / user123 (student) &nbsp;·&nbsp;
-          admin@test.com / admin123 (admin)
-        </div>
-      </div>
-      <div className="col-lg-5">
-        <div className="card shadow-sm">
-          <div className="card-header bg-white">
-            <ul className="nav nav-pills card-header-pills" role="tablist">
-              <li className="nav-item" role="presentation">
-                <button
-                  type="button"
-                  className={`nav-link${tab === "login" ? " active" : ""}`}
-                  onClick={() => setTab("login")}
-                  aria-selected={tab === "login"}
-                  role="tab"
-                >
-                  Login
-                </button>
-              </li>
-              <li className="nav-item" role="presentation">
-                <button
-                  type="button"
-                  className={`nav-link${tab === "register" ? " active" : ""}`}
-                  onClick={() => setTab("register")}
-                  aria-selected={tab === "register"}
-                  role="tab"
-                >
-                  Register
-                </button>
-              </li>
-            </ul>
-          </div>
-          <div className="card-body">
-            {tab === "login" ? <LoginForm /> : <RegisterForm />}
-          </div>
+        <div className="col-lg-5">
+          <section className="lf-auth-card card lf-rise lf-rise-2" aria-label="Login or register">
+            <div className="card-header bg-white">
+              <ul className="nav nav-pills" role="tablist">
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link${tab === "login" ? " active" : ""}`}
+                    onClick={() => setTab("login")}
+                    aria-selected={tab === "login"}
+                    role="tab"
+                  >
+                    Login
+                  </button>
+                </li>
+                <li className="nav-item" role="presentation">
+                  <button
+                    type="button"
+                    className={`nav-link${tab === "register" ? " active" : ""}`}
+                    onClick={() => setTab("register")}
+                    aria-selected={tab === "register"}
+                    role="tab"
+                  >
+                    Register
+                  </button>
+                </li>
+              </ul>
+            </div>
+            <div className="card-body">
+              {tab === "login" ? <LoginForm /> : <RegisterForm />}
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -115,7 +127,7 @@ function LoginForm() {
         />
         {errors.email && <div className="invalid-feedback">{errors.email}</div>}
       </div>
-      <div className="mb-3">
+      <div className="mb-4">
         <label htmlFor="login-password" className="form-label">Password</label>
         <input
           id="login-password"
@@ -209,7 +221,7 @@ function RegisterForm() {
         />
         {errors.phone && <div className="invalid-feedback">{errors.phone}</div>}
       </div>
-      <div className="mb-3">
+      <div className="mb-4">
         <label htmlFor="reg-password" className="form-label">Password</label>
         <input
           id="reg-password"

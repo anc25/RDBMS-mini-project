@@ -1,63 +1,615 @@
 /* =====================================================================
    app/globals.css
-   Small custom layer on top of Bootstrap 5.3 (loaded from the CDN in
-   app/layout.js). One accent colour is used across the whole app.
+   Design system for Campus Lost & Found - minimalist / Swiss-utility.
+
+   Ideas:
+   - paper background, ink text, hairline rules, flat surfaces (no shadows)
+   - one accent colour (teal); status badge hues stay functional
+   - Schibsted Grotesk everywhere: tight big headlines, uppercase
+     letterspaced micro-labels for UI chrome
+   - squared corners, generous whitespace, tabular numerals
+
+   Loaded AFTER Bootstrap's CDN stylesheet, so plain selectors here
+   override Bootstrap defaults of the same specificity.
    ===================================================================== */
 
 :root {
-  --lf-accent: #0f766e;      /* teal - the app's single accent colour */
-  --lf-accent-dark: #115e59;
+  --lf-paper: #f7f6f2;        /* page background */
+  --lf-surface: #ffffff;      /* cards, forms */
+  --lf-ink: #16150f;         /* primary text */
+  --lf-muted: #6f6d64;       /* secondary text */
+  --lf-hair: #e3e1d8;        /* hairline borders */
+  --lf-accent: #0e7268;      /* the single accent colour */
+  --lf-accent-ink: #0a574f;  /* accent, pressed */
+  --lf-wash: #efeee8;        /* subtle tinted row / hover fill */
+
+  --lf-radius: 3px;
+  --lf-font: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
 }
 
+/* ---------- base ---------- */
+
+html {
+  height: 100%;
+}
+html,
 body {
-  background-color: #f6f8f9;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+body {
+  min-height: 100%;
+  background-color: var(--lf-paper);
+  color: var(--lf-ink);
+  font-family: var(--lf-font);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Accent button (used instead of Bootstrap's blue for main actions) */
+::selection {
+  background: var(--lf-accent);
+  color: #fff;
+}
+
+h1, h2, h3, h4, h5, h6, .h3, .h5, .display-6 {
+  font-family: var(--lf-font);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--lf-ink);
+}
+
+a {
+  color: var(--lf-ink);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--lf-accent);
+}
+
+/* uppercase micro-label for section names, table heads, meta */
+.micro,
+dt,
+.form-label,
+thead th,
+.nav-link,
+.btn,
+.badge,
+.list-group-item .small {
+  letter-spacing: 0.01em;
+}
+.micro {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--lf-muted);
+}
+
+/* tabular numerals where numbers line up */
+.display-6,
+.table td,
+.progress-bar,
+.lf-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- page-load motion (subtle, CSS only) ---------- */
+
+@keyframes lfRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.lf-rise   { animation: lfRise 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.lf-rise-1 { animation-delay: 0.06s; }
+.lf-rise-2 { animation-delay: 0.14s; }
+.lf-rise-3 { animation-delay: 0.22s; }
+.lf-rise-4 { animation-delay: 0.30s; }
+@media (prefers-reduced-motion: reduce) {
+  .lf-rise, .lf-rise-1, .lf-rise-2, .lf-rise-3, .lf-rise-4 {
+    animation: none;
+  }
+}
+
+/* ---------- navbar ---------- */
+
+.navbar {
+  border-bottom: 1px solid var(--lf-hair);
+  background: var(--lf-paper);
+}
+.navbar .container {
+  max-width: 1180px;
+}
+.lf-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 800;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lf-ink) !important;
+}
+.lf-brand:hover {
+  color: var(--lf-accent) !important;
+}
+.lf-mark {
+  width: 10px;
+  height: 10px;
+  background: var(--lf-accent);
+  display: inline-block;
+}
+.navbar-nav .nav-link {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--lf-muted);
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+}
+.navbar-nav .nav-link:hover {
+  color: var(--lf-ink);
+}
+.navbar-nav .nav-link.active {
+  color: var(--lf-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+.navbar .text-muted {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- buttons: squared, uppercase, flat ---------- */
+
+.btn {
+  border-radius: var(--lf-radius);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding: 0.5rem 1rem;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.6875rem;
+}
 .btn-accent {
-  background-color: var(--lf-accent);
-  border-color: var(--lf-accent);
-  color: #ffffff;
+  background: var(--lf-accent);
+  border: 1px solid var(--lf-accent);
+  color: #fff;
 }
 .btn-accent:hover,
 .btn-accent:focus {
-  background-color: var(--lf-accent-dark);
-  border-color: var(--lf-accent-dark);
-  color: #ffffff;
+  background: var(--lf-accent-ink);
+  border-color: var(--lf-accent-ink);
+  color: #fff;
 }
 .btn-outline-accent {
-  border-color: var(--lf-accent);
-  color: var(--lf-accent);
+  background: transparent;
+  border: 1px solid var(--lf-ink);
+  color: var(--lf-ink);
 }
 .btn-outline-accent:hover,
 .btn-outline-accent:focus {
-  background-color: var(--lf-accent);
+  background: var(--lf-ink);
+  border-color: var(--lf-ink);
+  color: var(--lf-paper);
+}
+.btn-outline-secondary {
+  border: 1px solid var(--lf-hair);
+  color: var(--lf-muted);
+}
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus {
+  background: var(--lf-ink);
+  border-color: var(--lf-ink);
+  color: var(--lf-paper);
+}
+.btn-outline-danger {
+  border: 1px solid #b3564d;
+  color: #b3564d;
+}
+.btn-outline-danger:hover,
+.btn-outline-danger:focus {
+  background: #b3564d;
+  border-color: #b3564d;
+  color: #fff;
+}
+.btn-success {
+  background: var(--lf-accent);
   border-color: var(--lf-accent);
-  color: #ffffff;
+}
+.btn-success:hover,
+.btn-success:focus {
+  background: var(--lf-accent-ink);
+  border-color: var(--lf-accent-ink);
+}
+.btn-close {
+  --bs-btn-close-focus-shadow: none;
 }
 
+/* ---------- cards: hairline panels, no shadows ---------- */
+
+.card {
+  border: 1px solid var(--lf-hair);
+  border-radius: var(--lf-radius);
+  box-shadow: none;
+  background: var(--lf-surface);
+}
+.card.shadow-sm,
+.shadow-sm {
+  box-shadow: none !important;
+}
+.card-header {
+  background: var(--lf-surface);
+  border-bottom: 1px solid var(--lf-hair);
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lf-ink);
+}
+.card-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* clickable action cards on the dashboard */
+a .card {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+a:hover .card {
+  border-color: var(--lf-ink);
+  background: var(--lf-surface);
+}
+a:hover .card .card-title {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--lf-accent);
+}
+
+/* stat / counter cards */
+.stat-card {
+  border-top: 2px solid var(--lf-ink);
+}
+.stat-card .display-6 {
+  color: var(--lf-ink);
+  font-weight: 800;
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+/* ---------- badges (status colours stay contractual) ---------- */
+
+.badge {
+  border-radius: 2px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.4em 0.6em;
+}
+.badge-matched {
+  background-color: #6f42c1;
+  color: #fff;
+}
+/* category chip on cards / detail pages */
+.badge.text-bg-light {
+  background: transparent !important;
+  color: var(--lf-muted) !important;
+  border: 1px solid var(--lf-hair);
+  font-weight: 700;
+}
+
+/* ---------- forms: flat, hairline, accent focus ---------- */
+
+.form-control,
+.form-select {
+  border: 1px solid var(--lf-hair);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+  color: var(--lf-ink);
+  font-size: 0.9rem;
+  padding: 0.5rem 0.7rem;
+}
+.form-control::placeholder {
+  color: #a5a296;
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--lf-accent);
+  box-shadow: none;
+  outline: 1px solid var(--lf-accent);
+}
+.form-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lf-muted);
+  margin-bottom: 0.35rem;
+}
+.form-text {
+  color: var(--lf-muted);
+}
+
+/* ---------- tables: ruled, uppercase heads ---------- */
+
+.table {
+  --bs-table-border-color: var(--lf-hair);
+  margin-bottom: 0;
+}
+thead th {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lf-muted);
+  border-bottom: 1px solid var(--lf-ink) !important;
+  background: var(--lf-surface);
+}
+.table-hover > tbody > tr:hover > * {
+  --bs-table-hover-bg: var(--lf-wash);
+}
+
+/* ---------- progress bars: flat, squared ---------- */
+
+.progress {
+  background: var(--lf-wash);
+  border-radius: 2px;
+  height: 0.65rem;
+}
+.progress-bar {
+  background: var(--lf-accent);
+  border-radius: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+/* ---------- list groups (dashboard matches) ---------- */
+
+.list-group-item {
+  border-color: var(--lf-hair);
+  background: transparent;
+}
+.list-group-item:hover {
+  background: var(--lf-wash);
+}
+
+/* ---------- nav pills / tabs ---------- */
+
+.nav-pills .nav-link {
+  border-radius: var(--lf-radius);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--lf-muted);
+  padding: 0.4rem 1rem;
+}
+.nav-pills .nav-link.active {
+  background: var(--lf-ink);
+  color: var(--lf-paper);
+}
+.nav-tabs {
+  border-bottom: 1px solid var(--lf-hair);
+}
+.nav-tabs .nav-link {
+  border: none;
+  color: var(--lf-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: -1px;
+}
+.nav-tabs .nav-link.active {
+  background: transparent;
+  color: var(--lf-ink);
+  border-bottom: 2px solid var(--lf-accent);
+}
+
+/* ---------- alerts: hairline notes ---------- */
+
+.alert {
+  border: 1px solid var(--lf-hair);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+  color: var(--lf-ink);
+  box-shadow: none;
+}
+.alert-light {
+  background: var(--lf-surface);
+}
+
+/* ---------- modal: flat sheet ---------- */
+
+.modal-content {
+  border: 1px solid var(--lf-hair);
+  border-radius: var(--lf-radius);
+  box-shadow: none;
+}
+.modal-header,
+.modal-footer {
+  border-color: var(--lf-hair);
+}
+.modal-backdrop.show {
+  opacity: 0.35;
+}
+
+/* ---------- toasts: ink sheet, accent/error rule ---------- */
+
+.toast {
+  border-radius: var(--lf-radius);
+  box-shadow: none;
+}
+.toast.text-bg-success {
+  background: var(--lf-ink) !important;
+  color: var(--lf-paper) !important;
+  border-left: 3px solid var(--lf-accent);
+}
+.toast.text-bg-danger {
+  background: var(--lf-ink) !important;
+  color: var(--lf-paper) !important;
+  border-left: 3px solid #b3564d;
+}
+
+/* ---------- spinner ---------- */
+
+.spinner-border {
+  --bs-spinner-border-color: var(--lf-accent);
+}
+
+/* ---------- text helpers ---------- */
+
+.text-muted {
+  color: var(--lf-muted) !important;
+}
 .text-accent {
   color: var(--lf-accent) !important;
 }
-
-/* "matched" needs purple, which Bootstrap does not ship */
-.badge-matched {
-  background-color: #6f42c1;
-  color: #ffffff;
+.link-secondary {
+  color: var(--lf-muted) !important;
 }
 
-/* Landing page hero */
-.hero {
-  background: linear-gradient(135deg, var(--lf-accent) 0%, var(--lf-accent-dark) 100%);
-  color: #ffffff;
-  border-radius: 1rem;
-}
-.hero .lead {
-  color: rgba(255, 255, 255, 0.9);
-}
+/* =====================================================================
+   Landing page
+   ===================================================================== */
 
-/* Counter cards on the dashboard */
-.stat-card .display-6 {
+.lf-landing {
+  padding-top: 2.5rem;
+}
+.lf-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.4rem;
+}
+.lf-eyebrow::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--lf-hair);
+}
+.lf-display {
+  font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin-bottom: 1.2rem;
+}
+.lf-dot {
   color: var(--lf-accent);
+}
+.lf-sub {
+  color: var(--lf-muted);
+  font-size: 1rem;
+  max-width: 34rem;
+  margin-bottom: 1.8rem;
+}
+.lf-steps {
+  list-style: none;
+  margin: 0 0 2rem;
+  padding: 0;
+  border-top: 1px solid var(--lf-hair);
+}
+.lf-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--lf-hair);
+  font-size: 0.9rem;
+}
+.lf-steps li span:first-child {
+  font-weight: 800;
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  color: var(--lf-accent);
+}
+.lf-demo-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  padding: 0.8rem 0 0;
+  border-top: 1px solid var(--lf-hair);
+  font-size: 0.8rem;
+  color: var(--lf-muted);
+}
+.lf-demo-note .micro {
+  width: 100%;
+}
+.lf-demo-note code {
+  color: var(--lf-ink);
+  font-family: inherit;
   font-weight: 600;
+}
+.lf-auth-card .card-header {
+  padding: 0.65rem 1rem 0;
+  border-bottom: 1px solid var(--lf-hair);
+}
+.lf-auth-card .nav-pills {
+  border-bottom: none;
+}
+.lf-auth-card .nav-pills .nav-link {
+  border-radius: 0;
+  padding: 0.55rem 0.2rem;
+  margin-right: 1.25rem;
+  border-bottom: 2px solid transparent;
+}
+.lf-auth-card .nav-pills .nav-link.active {
+  background: transparent;
+  color: var(--lf-ink);
+  border-bottom-color: var(--lf-accent);
+}
+.lf-auth-card .card-body {
+  padding: 1.5rem 1.25rem 1.35rem;
+}
+
+/* ---------- dashboard / admin shared ---------- */
+
+/* every inner page starts with "h1.h3 + muted lead" - keep it tight */
+h1.h3 {
+  font-size: 1.65rem;
+  margin-bottom: 0.15rem;
+}
+h1.h3 + p.text-muted {
+  color: var(--lf-muted);
+  margin-bottom: 1.4rem;
+}
+.page-intro {
+  margin-bottom: 1.6rem;
+}
+.page-intro h1 {
+  font-size: 1.7rem;
+  margin-bottom: 0.15rem;
+}
+.page-intro p {
+  color: var(--lf-muted);
+  margin-bottom: 0;
+}
+
+/* item detail definition list */
+dl.row dt {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lf-muted);
+  padding-top: 0.55rem;
+}
+dl.row dd {
+  padding-top: 0.55rem;
+  border-bottom: 1px solid var(--lf-hair);
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+dl.row dd:last-child {
+  border-bottom: none;
 }
