@@ -9,9 +9,9 @@ DROP DATABASE IF EXISTS lostfound;
 CREATE DATABASE lostfound CHARACTER SET utf8mb4;
 USE lostfound;
 
-SOURCE sql/schema.sql;
-SOURCE sql/logic.sql;
-SOURCE sql/seed.sql;
+SOURCE sql/mysql/schema.sql;
+SOURCE sql/mysql/logic.sql;
+SOURCE sql/mysql/seed.sql;
 
 -- Quick sanity check
 SELECT 'Users' AS tbl, COUNT(*) AS n FROM Users
