@@ -1,1972 +1,760 @@
-=====================================================================
-CAMPUS LOST AND FOUND - EXPLANATION FOR THE VIVA
-=====================================================================
+================================================================================
+RDBMS PROJECT - CAMPUS LOST & FOUND
+COMPLETE CODE & DATABASE EXPLANATION
 
-This file explains the whole project in plain language. It is written for
-two students who need to explain every part out loud to an examiner.
-Everything here is based on the real files in this repository:
-PRD.md, FRONTEND_BRIEF.md, README.md, sql/mysql/ (schema.sql, logic.sql,
-seed.sql, reset.sql), sql/tidb/ (APP_LOGIC.md and the numbered files),
-and the Next.js code in app/, components/ and lib/.
+Anchal Singh · Nandini Khandelwal - Final submission, October 2026
+Repo: github.com/anc25/RDBMS-mini-project
+================================================================================
 
 TABLE OF CONTENTS
-
-  1.  PROJECT OVERVIEW
-  2.  WHAT CHANGED RECENTLY
-  3.  TWO DATABASE VERSIONS (MySQL and TiDB, with the mapping table)
-  4.  TECH STACK AND WHY
-  5.  HOW THE APP IS STRUCTURED
-  6.  DATABASE DESIGN
-  7.  TRIGGERS
-  8.  STORED PROCEDURES AND THE TRANSACTION
-  9.  VIEWS
-  10. SEED DATA
-  11. THE 12 REQUIRED QUERIES
-  12. SECURITY AND ERROR HANDLING
-  13. DEPLOYMENT
-  14. DEMO SCRIPT
-  15. VIVA QUESTIONS AND ANSWERS
-  16. LIMITATIONS AND FUTURE WORK
-  17. GLOSSARY
-
-STATUS LABELS USED IN THIS FILE
-
-  [DONE]        built and working in this repository
-  [MOCK ONLY]   the endpoint or feature exists but runs on the in-memory
-                mock store (lib/mock-store.js), not on real SQL yet
-  [NOT BUILT YET]   does not exist in the repository at all yet
-  [UNVERIFIED]  could not be confirmed from the files
-
-
-=====================================================================
-1. PROJECT OVERVIEW
-=====================================================================
-
-THE PROBLEM
-
-On a campus people lose things (phones, wallets, ID cards, keys) and
-other people find those things. Today there is no single system to
-connect them. The finder hands it to some office, the owner registers
-a complaint somewhere else, and nobody runs the matching by hand.
-
-THE APP
-
-Campus Lost and Found is a web application where:
-
-  - a student or staff member reports a LOST item,
-  - another person reports a FOUND item,
-  - the database scores and suggests MATCHES between them,
-  - the owner of the lost item submits a CLAIM (with proof) on the
-    found item it believes is theirs,
-  - an ADMIN reviews the claim and VERIFIES or REJECTS it,
-  - verification automatically updates the item, the report, the other
-    pending claims, and records a HANDOVER,
-  - everything important is written to an AUDIT LOG by triggers.
-
-WHO THE USERS ARE
-
-  - user (student or staff): register, log in, report lost items,
-    report found items, browse found items, see matches for their own
-    reports, submit claims, track their own claims.
-  - admin: everything above, plus review the claim queue (verify or
-    reject with a note), see statistics, and read the audit log.
-
-THE FULL WORKFLOW IN ONE LINE
-
-  lost report -> found item -> match (scored) -> claim -> admin verify
-  -> item claimed + report resolved + handover recorded -> audit log.
-
-ONE WORKED EXAMPLE (uses real seed data)
-
-  Anchal Singh (user_id 2, email user@test.com) loses a black iPhone.
-  On 6 days ago (relative to today) the seed inserts this row
-  (sql/mysql/seed.sql):
-
-    (1, 2, 1, 1, 'Black iPhone 13',
-     'Black iPhone with a blue silicone case, cat photo as lock screen',
-     CURDATE() - INTERVAL 6 DAY, NOW() - INTERVAL 6 DAY)
-
-  category_id 1 is "Phone" (see the 9 categories in the seed) and
-  location_id 1 is "Library". Status defaults to 'open'.
-
-  Rohan Mehta (user_id 3) finds a phone in the Library and hands it
-  in. The seed's found row is:
-
-    (1, 3, 1, 1, 'Black iPhone',
-     'Black iPhone with a blue case, found near the reading hall',
-     CURDATE() - INTERVAL 5 DAY, 'Library help desk',
-     NOW() - INTERVAL 5 DAY)
-
-  The stored procedure sp_find_matches runs for report 1 and scores
-  found item 1:
-    same category (Phone)        +40
-    same location (Library)      +30
-    found 5 days ago, lost 6 days
-    ago -> within the 7-day
-    window                      +20
-    first word "Black" appears in
-    the found title "Black
-    iPhone"                     +10
-                                ---- total 100 (only rows with 50+)
-  A match row is saved and the report status becomes 'matched'.
-
-  Anchal opens the item page, writes proof ("Lock screen is a photo of
-  my cat and the case is blue" - this is the real seed proof text of
-  claim 1), and submits a claim. The claim triggers set the item to
-  'claim_pending'. In the current seed claim 1 stays PENDING - it is
-  one of the four pending claims, so an examiner can watch the admin
-  verify it live during the demo.
-
-  The admin (admin@test.com) opens the admin page, checks the proof,
-  and verifies. The sp_verify_claim transaction then: marks the claim
-  verified, sets item 1 to 'claimed', sets report 1 to 'resolved',
-  rejects every other pending claim on the item with the note "Another
-  claim was verified for this item", and inserts a Handover row.
-  Triggers write audit log rows at every step. The item is handed
-  back - workflow complete.
-
-
-=====================================================================
-2. WHAT CHANGED RECENTLY
-=====================================================================
-
-Based on the git history and a full diff between the previous state
-(commit 64e34f9) and the current HEAD (760da51).
-
-THE LAST TWO COMMITS (both by the teammate, Prakhar Upadhyay)
-
-  760da51 - "Make 01_schema.sql self-sufficient: create the lostfound
-            database itself" [DONE]
-  a5c6bc7 - "Split sql/ into MySQL and TiDB Cloud versions" [DONE]
-
-WHAT THEY DID, MECHANICALLY
-
-  - MOVED (renamed, content untouched): sql/logic.sql,
-    sql/schema.sql, sql/seed.sql, sql/reset.sql are now inside
-    sql/mysql/. Git reports the moves as 100% renames for logic.sql,
-    schema.sql and seed.sql.
-  - EDITED while moving: sql/mysql/reset.sql only changed its SOURCE
-    lines so they point at the new folder:
-
-      SOURCE sql/mysql/schema.sql;
-      SOURCE sql/mysql/logic.sql;
-      SOURCE sql/mysql/seed.sql;
-
-  - ADDED: sql/tidb/ - five numbered SQL files plus one documentation
-    file that describe the SAME database, but for TiDB Cloud, which
-    does not support triggers or stored procedures:
-      00_create_database.sql  creates the lostfound database
-      01_schema.sql           creates the 8 tables + lookup rows,
-                              and (since commit 760da51) creates the
-                              database itself, so the file is
-                              self-sufficient
-      02_views.sql            the two views
-      03_seed.sql             the same demo data, but every effect the
-                              MySQL triggers/procedures had is written
-                              out as plain SQL
-      04_sanity_check.sql     row counts (plus claim and item status
-                              breakdowns) to verify the load worked
-      APP_LOGIC.md            the translation table: for every trigger
-                              and procedure, the exact statements the
-                              APPLICATION runs instead
-  - EDITED: README.md grew a "Host the database on TiDB Cloud" section
-    with the load order and connection details, and updated its folder
-    structure listing (sql/mysql/, sql/tidb/).
-
-WHAT THE CHANGES MEAN FOR THE PROJECT
-
-  - The frontend, API routes, mock store and page code are COMPLETELY
-    UNCHANGED by these two commits (no files outside sql/ and
-    README.md were touched).
-  - There are now two runnable versions of the same database: the
-    local MySQL version keeps all the interesting SQL objects
-    (triggers, procedures) - this is the version for the viva and the
-    report; the TiDB version exists so the app can run against a free
-    cloud database where triggers simply cannot exist, and it docs
-    exactly how the app takes over those rules.
-  - Nothing is deployed to the cloud yet (see section 13); the TiDB
-    split is step one of that.
-  - The project-wide file references used all through this document
-    (sql/schema.sql etc.) were updated to their new sql/mysql/ paths.
-
-
-=====================================================================
-3. TWO DATABASE VERSIONS
-=====================================================================
-
-WHY TWO VERSIONS EXIST
-
-  TiDB (the cloud database we plan to host the app on) is
-  MySQL-compatible for tables and queries, but it DOES NOT support
-  triggers, stored procedures, events or user-defined functions
-  (documented at the top of sql/tidb/APP_LOGIC.md). The project's
-  core showcase IS triggers and procedures. So the team split the
-  SQL in two:
-
-  sql/mysql/ - THE FULL VERSION (for the local run, the report and
-               the viva)
-    schema.sql   the 8 tables and every constraint (unchanged)
-    logic.sql    the 10 triggers, the 2 procedures, the 2 views
-    seed.sql     the demo data; triggers and CALLs do the work while
-                 it loads
-    reset.sql    DROP DATABASE + rebuild + SOURCE the other three
-
-  sql/tidb/ - THE TIDB CLOUD VERSION (no triggers, no procedures)
-    Same tables, same constraints, same data. Each file does one job
-    (listed in section 2), loaded in numerical order 00 -> 04
-    (see README "Host the database on TiDB Cloud"):
-      00 creates the database (also done inside 01; 00 exists for the
-         web console path where you want an explicit first step),
-      01 creates the tables and constraints and the lookup rows,
-      02 creates the views,
-      03 seeds all demo data writing the trigger/procedure effects as
-         plain SQL (audit rows, status flips, matches, handovers),
-      04 prints counts that must be: Users 10, LostReports 20,
-         FoundItems 20, Matches 28, Claims 9 (3 verified, 2 rejected,
-         4 pending), Handovers 3, AuditLog 57; claimed items 3,
-         claim_pending 3, unclaimed 14.
-
-EXACTLY WHAT THE TIDB VERSION KEEPS AND DROPS
-(based on sql/tidb/01_schema.sql, not assumptions)
-
-  KEEPS (all enforced by TiDB itself):
-    - all 8 tables with the same columns and types
-    - PRIMARY KEY with AUTO_INCREMENT (note from the file comment: on
-      a distributed cluster ids may be unique but not consecutive -
-      they can jump)
-    - all FOREIGN KEYs with all three ON DELETE actions
-      (RESTRICT for users/categories/locations/claims/handovers,
-      CASCADE for Matches, SET NULL for Claims.report_id and
-      Claims.reviewed_by)
-    - UNIQUE constraints: Users.email, Matches (report_id, item_id),
-      Handovers.claim_id
-    - CHECK constraints: CHAR_LENGTH(title) >= 3 (twice) and
-      score BETWEEN 0 AND 100
-    - ENUM columns: roles and all status columns
-    - DEFAULTs: CURRENT_TIMESTAMP and the starting statuses
-    - views (02_views.sql is identical to the MySQL version)
-    - transactions: TiDB supports pessimistic transactions, so
-      SELECT ... FOR UPDATE row locks work (APP_LOGIC's last section)
-
-  DROPS (edited out of the TiDB schema, impossible on TiDB):
-    - all 10 trg_* triggers  -> rules move into the app (mapping
-      table below)
-    - sp_find_matches and sp_verify_claim
-    - so also: automatic audit logging, automatic item status flips,
-      automatic future-date rejection - none of these happen inside
-      the database anymore.
-
-  The team should demo the MySQL version in the viva, because it is
-  the version where the database visibly does the interesting work
-  (see the new viva questions in section 15).
-
-
-SIDE-BY-SIDE MAPPING: MYSQL OBJECT -> TiDB / APP EQUIVALENT
-(quotes are copied from sql/tidb/APP_LOGIC.md; section numbers in
-brackets are the APP_LOGIC headings)
-
-TRG_LOST_BEFORE_INSERT / TRG_FOUND_BEFORE_INSERT ["date cannot
-be in the future"]  (APP_LOGIC 1)
-
-  MySQL: the trigger aborts the insert with
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-    'Date lost cannot be in the future';   (and the found variant)
-
-  TiDB/app (quoted):
-
-    SELECT (DATE(?) > CURDATE()) AS invalid;
-
-  plus the note the file gives: app-side check in JavaScript
-  ("if (dateLost > todayISO()) return 400"). Difference: the rule is
-  enforced by our route handler before it even inserts. It is no
-  longer automatic - another client could still insert a future date;
-  the database will accept it.
-
-TRG_LOST_AFTER_INSERT / TRG_FOUND_AFTER_INSERT
-["audit rows on new reports/items"]  (APP_LOGIC 2)
-
-  MySQL: trigger inserts the AuditLog row for every new report/item.
-
-  TiDB/app (quoted):
-
-    INSERT INTO LostReports (...) VALUES (...);
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('LostReports', 'INSERT', LAST_INSERT_ID(), ?);
-
-  Difference: two statements run together in one transaction;
-  LAST_INSERT_ID() takes the place of the trigger's NEW.report_id.
-  If the app forgets the second statement, history is simply missing.
-
-TRG_CLAIM_BEFORE_INSERT ["the claim business rules"] (APP_LOGIC 3)
-
-  MySQL: one trigger with four rules and four exact messages.
-
-  TiDB/app (quoted):
-
-    SELECT status, finder_id INTO @status, @finder
-    FROM FoundItems WHERE item_id = ?;
-    -- @status IN ('claimed','disposed')
-    --    -> 'This item is no longer available to claim'
-    -- @finder = claimant
-    --    -> 'You cannot claim an item you found yourself'
-
-    SELECT COUNT(*) FROM Claims
-    WHERE item_id = ? AND claimant_id = ? AND status = 'pending';
-    -- count > 0
-    --    -> 'You already have a pending claim on this item'
-
-    SELECT user_id FROM LostReports WHERE report_id = ?;
-    -- owner <> claimant
-    --    -> 'The linked lost report does not belong to you'
-
-  Difference: the route runs the checks, reads the results and raises
-  HTTP 409 with the same texts (as the file instructs). Race note:
-  between the check and the INSERT another claim could sneak in,
-  because no trigger is watching - the transaction plus care
-  minimises it.
-
-TRG_CLAIM_AFTER_INSERT ["item becomes claim_pending + audit row"]
-(APP_LOGIC 4)
-
-  TiDB/app (quoted):
-
-    INSERT INTO Claims (...) VALUES (...);
-    UPDATE FoundItems SET status = 'claim_pending'
-    WHERE item_id = ? AND status = 'unclaimed';
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('Claims', 'INSERT', LAST_INSERT_ID(), ?);
-
-  Identical effects, but the three-statement sequence is OUR job.
-
-TRG_CLAIM_BEFORE_UPDATE / TRG_CLAIM_AFTER_UPDATE
-["no double review, one verified claim per item, status sync"]
-(APP_LOGIC 5)
-
-  TiDB/app (quoted):
-
-    -- reviewed claims cannot change again
-    SELECT status FROM Claims WHERE claim_id = ? FOR UPDATE;
-    -- status <> 'pending'
-    --    -> 'This claim has already been reviewed'
-
-    -- only one verified claim per item
-    SELECT COUNT(*) FROM Claims
-    WHERE item_id = ? AND status = 'verified' AND claim_id <> ?;
-    -- count > 0
-    --    -> 'Another claim is already verified for this item'
-
-    -- the actual verify + sync (one transaction)
-    UPDATE Claims SET status = 'verified', reviewed_by = ?,
-           admin_note = ?, reviewed_at = NOW()
-    WHERE claim_id = ?;
-    UPDATE FoundItems SET status = 'claimed'   WHERE item_id = ?;
-    UPDATE LostReports SET status = 'resolved' WHERE report_id = ?;
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('Claims', 'STATUS_CHANGE', ?, ?);
-
-  And rejecting a claim ("sync in the other direction", quoted):
-
-    UPDATE Claims SET status = 'rejected', reviewed_by = ?,
-           admin_note = ?, reviewed_at = NOW()
-    WHERE claim_id = ?;
-    -- flip the item back only if no other pending claim remains
-    UPDATE FoundItems SET status = 'unclaimed'
-    WHERE item_id = ? AND status = 'claim_pending'
-      AND NOT EXISTS (SELECT 1 FROM Claims
-                      WHERE item_id = ? AND status = 'pending');
-
-  The FOR UPDATE is what replaces the automatic trigger protection ?
-  it locks the row for the critical section. The NOT EXISTS guard
-  copies the trigger's "no other pending claims remain" rule into one
-  UPDATE.
-
-SP_FIND_MATCHES(report_id)  (APP_LOGIC 6)
-
-  TiDB/app (quoted):
-
-    INSERT IGNORE INTO Matches (report_id, item_id, score)
-    SELECT s.report_id, s.item_id, s.score
-    FROM (
-      SELECT r.report_id, f.item_id,
-        (CASE WHEN f.category_id = r.category_id THEN 40 ELSE 0 END)
-      + (CASE WHEN f.location_id  = r.location_id THEN 30 ELSE 0 END)
-      + (CASE WHEN f.date_found BETWEEN r.date_lost
-                   AND DATE_ADD(r.date_lost, INTERVAL 7 DAY)
-               THEN 20 ELSE 0 END)
-      + (CASE WHEN CHAR_LENGTH(SUBSTRING_INDEX(r.title, ' ', 1)) >= 3
-              AND LOCATE(LOWER(SUBSTRING_INDEX(r.title, ' ', 1)),
-                         LOWER(f.title)) > 0
-             THEN 10 ELSE 0 END) AS score
-      FROM LostReports r
-      JOIN FoundItems f ON f.status IN ('unclaimed', 'claim_pending')
-      WHERE r.report_id = ? AND r.status IN ('open', 'matched')
+  0. How to read this document
+  1. System overview & architecture
+  2. Frontend explained - file by file
+  3. Backend explained - function by function
+  4. sql/ - the database, explained exhaustively
+  5. RDBMS concepts used - a survey
+  6. Deployment divergence note (canonical MySQL vs TiDB Cloud)
+
+
+================================================================================
+ 0. HOW TO READ THIS DOCUMENT
+================================================================================
+
+This is the narrative companion to the codebase. Every page, route file,
+table, trigger, procedure and view has an entry here. Code excerpts are
+short on purpose - open the referenced file alongside this document; the
+doc tells you what every piece is FOR and what breaks without it.
+
+Reading order for a grader pressed for time:
+  Section 4 (schema walkthrough) -> Section 5 (concepts survey, incl. the
+  ACID transaction) -> Section 4.14 (sp_verify_claim). Those three cover
+  the DBMS syllabus end-to-end.
+
+One idea runs through the whole project: the DATABASE is the product.
+The frontend exists so the examiner can SEE the database working - every
+screen is a query, every button is a transaction, and the mock layer is a
+faithful, runnable twin of the SQL so the demo works with or without a
+server attached.
+
+
+================================================================================
+ 1. SYSTEM OVERVIEW & ARCHITECTURE
+================================================================================
+
+Stack
+-----
+  Next.js 16 (App Router)   - frontend AND backend in one deployable app
+  Bun 1.4                   - runtime + package manager (bun.lock committed)
+  React 19                  - client components, hooks only (no TS)
+  Bootstrap 5.3.3           - styling, loaded as CSS from the CDN only
+                              (no Bootstrap JS anywhere; light/dark modes via
+                              data-bs-theme)
+  Schibsted Grotesk         - Google Font, loaded in the root layout
+  MySQL 8 / TiDB Cloud      - database (canonical scripts target MySQL 8)
+  mysql2 (promise API)      - driver, connection pool, prepared statements
+                              (the real-mode swap; not wired yet)
+  Vercel                    - deployment target
+
+Architecture in one picture
+---------------------------
+
+    Browser (React 19 client components)
+       |  fetch (credentials: same-origin)
+       v
+    Next.js route handlers  (app/api/**/route.js on Vercel)
+       |-- lib/mock-auth.js   -> session cookie check (401/403 helpers)
+       |-- lib/mock-store.js  -> business rules = the trigger/procedure
+       |                         twins, returning { error, status } or data
+       v
+    (mock phase)  in-memory store on globalThis, seeded exactly like
+                  sql/seed.sql - dates computed relative to today
+    (real phase)  mysql2 pool (lib/db.js, to be added) -> MySQL 8 / TiDB
+
+Why mock-first
+--------------
+The PRD mandated it: the whole UI ships before a server exists, and every
+API route is a ~20-line file whose BODY can be swapped for real SQL one
+route at a time. The response shape (same snake_case fields) and the same
+error codes (400 validation / 401 anonymous / 403 non-admin / 404 missing /
+409 trigger conflict) are fixed by contract, so pages never change when a
+route goes real.
+
+Roles and what they unlock
+--------------------------
+  admin        - everything, plus the claim queue, stats and audit log
+  user/student - report lost items, browse and claim found items, track
+                 own reports and claims
+
+Both roles share one `users` table; the role column is an ENUM and every
+admin route answers 403 "Admin only" for non-admins.
+
+Request lifecycle (one claim, end to end)
+-----------------------------------------
+ 1. Student opens /browse, the page fetches GET /api/found - the mock
+    returns only status='unclaimed' items, shaped like the
+    v_open_found_items view.
+ 2. Student opens /item/3, reads the detail, fills proof text and
+    submits the claim form -> POST /api/claims.
+ 3. The route checks the session cookie, then createClaim() re-checks
+    every rule of trg_claim_before_insert IN THE SAME ORDER the trigger
+    does; any violation returns the trigger's exact message as a 409.
+ 4. On success the item flips unclaimed -> claim_pending and an audit row
+    is written (trg_claim_after_insert), the response is { claim_id }.
+ 5. An admin opens /admin, sees the queue (rows shaped like
+    v_claim_details), clicks Verify with a note -> POST
+    /api/admin/claims/3/verify -> sp_verify_claim's three steps run
+    (verify + reject other pendings + handover), all statuses propagate.
+
+
+================================================================================
+ 2. FRONTEND EXPLAINED - FILE BY FILE
+================================================================================
+
+Convention: paths relative to repo root. Every page is a "use client"
+component; pages never fetch() themselves - they call lib/api.js.
+
+app/layout.js                         ROOT LAYOUT
+  Loads Bootstrap 5.3 CSS from the CDN (CSS only - we never use Bootstrap's
+  JavaScript), Schibsted Grotesk from Google Fonts, the shared <Navbar/>
+  and the global <ToastHost/>. Also inlines a tiny pre-paint script that
+  sets data-bs-theme from localStorage or the OS preference, so a dark-mode
+  reload never flashes white. suppressHydrationWarning on <html> because
+  that script changes the DOM before React hydrates, by design.
+
+app/globals.css                       DESIGN SYSTEM
+  The "Swiss utility" look on top of Bootstrap: a flat, document-like
+  palette, hairline borders, one accent color, lf-* classes for the
+  landing hero, auth card, item cards, progress-score bars and rise-in
+  animations. Defines how every Bootstrap "-subtle/-emphasis" badge pair
+  looks in BOTH light and dark themes.
+
+app/page.js                           LANDING + LOGIN/REGISTER
+  Typographic hero ("Lost it on campus. Someone probably found it.")
+  with a 3-step explainer and demo credentials, next to an auth card with
+  Login / Register tabs (plain React state - no Bootstrap JS). LoginForm
+  validates then calls login() -> router.push("/dashboard"). RegisterForm
+  validates name>=2 chars, email shape, phone 6-15 digits, password>=6
+  and calls register(). Errors from the server arrive as thrown Errors
+  and surface in toasts.
+
+components/ThemeToggle.js             LIGHT/DARK SWITCH
+  Flips data-bs-theme between "light"/"dark" on <html>, remembers the
+  choice in localStorage; CSS decides which icon is visible per theme.
+
+components/Toast.js + lib/toast.js    GLOBAL TOASTS
+  One <ToastHost/> in the layout listens for toast events; any page calls
+  showToast(message, "error"). This is how server error messages (409
+  trigger messages included) reach the user word for word.
+
+components/Navbar.js                  TOP NAVIGATION
+  Brand, links, Admin link shown only for admins, Logout button. Hidden
+  on the landing page (which has its own hero).
+
+components/AuthGuard.js               THE SESSION GUARD (client)
+  Wraps every page except "/". Fetches /api/me on mount:
+    - no session          -> redirect to "/" (login page)
+    - adminOnly + student -> redirect to "/dashboard"
+    - ok                  -> render children(user)
+  Every page below is wrapped in it.
+
+app/dashboard/page.js                 DASHBOARD
+  Greeting + three action cards (Report Lost / Report Found / Browse).
+  Loads my reports and my claims in parallel, computes counters
+  (open reports, pending claims, total matches), then fetches the matches
+  of every active report and shows the best five, highest score first,
+  as recent "possible matches".
+
+app/report-lost/page.js               LOST REPORT FORM
+  Category and location dropdowns come from /api/categories and
+  /api/locations (lookup tables). Date picker cannot go into the future
+  (client mirror of trg_lost_before_insert). On success -> /my-reports,
+  where the automatic matches are already waiting.
+
+app/report-found/page.js              FOUND ITEM FORM
+  Same shape plus the "currently stored at" field (where the physical
+  item is kept - help desk, warden office...). On success -> /browse,
+  where the new item is now listed for others.
+
+app/browse/page.js                    SEARCH SCREEN
+  Filter bar (keyword q, category, location, from/to date range) over all
+  unclaimed found items rendered as ItemCard grids. Filters re-run the
+  search on every change; loading and empty states included. This is the
+  UI of query 2 (filtered unclaimed items).
+
+components/ItemCard.js                CARD FOR THE GRID
+  Title, category badge, location, date, "View" button into /item/[id].
+
+app/item/[id]/page.js                 ITEM DETAIL + CLAIM FORM
+  Full item record (description, stored-at, status badge). The claim form
+  lets the user type proof text and optionally link one of their own lost
+  reports (the Claims.report_id FK). When the item is claimed/disposed
+  the form is replaced by a badge - the trigger rules made visible.
+
+app/my-reports/page.js                MY REPORTS + MATCHES
+  Table of the user's lost reports; each row expands (React state) into
+  its matches, score shown as a Bootstrap progress bar (score/100).
+  Row actions: "Re-run matching" (rematchReport -> the mock of
+  CALL sp_find_matches) and "Close report" (PATCH /api/lost/[id]).
+
+app/my-claims/page.js                 MY CLAIMS
+  The user's own claims with status badges and the admin's note visible
+  ("No name in the notebook, proof did not match") - the review trail.
+
+app/admin/page.js                     ADMIN CONTROL ROOM
+  Admin-only, three tabs:
+    1. Claim queue   - pending claims shaped like v_claim_details
+                       (claimant name/email, item, linked report, proof);
+                       Verify / Reject open a Modal for the required note.
+    2. Stats         - status counters, hotspot locations (lost reports
+                       per location), open-vs-resolved per category, and
+                       items unclaimed over 30 days.
+    3. Audit log     - read-only, latest 100 rows the triggers wrote.
+
+components/StatusBadge.js             ONE COLOR PER STATUS
+  Maps every status to a Bootstrap subtle/emphasis pair that adapts to the
+  theme: open=blue, matched=purple, resolved/claimed/verified=green,
+  pending/claim_pending/unclaimed=amber, rejected/closed/disposed=grey.
+
+components/Modal.js                   PLAIN-CSS MODAL
+  Bootstrap modal classes without Bootstrap JS; React mounts/unmounts it.
+  Used by the admin Verify/Reject note dialog.
+
+lib/api.js                            THE ONLY DOOR TO THE BACKEND
+  request()/post() helpers plus one exported function per endpoint:
+  register, login, logout, getMe, getCategories, getLocations, createLost,
+  getMyLost, closeLostReport, getMatches, rematchReport, createFound,
+  getFound(filters), getFoundItem, submitClaim, getMyClaims,
+  getAdminClaims, verifyClaim, rejectClaim, getAdminStats, getAdminAudit.
+  Every call is same-origin (cookie rides along), parses JSON, and throws
+  Error(data.error) on non-2xx so pages can toast the server's message.
+  This file is IDENTICAL in mock mode and real mode - that is the whole
+  migration strategy.
+
+lib/mock-auth.js                      SESSION LAYER
+  httpOnly cookie "mock_user_id" (SameSite=Lax, 7 days). getAuthedUser()
+  reads it and resolves the user; setUserCookie/clearUserCookie attach or
+  clear it; unauthorized()/forbidden() are the shared 401/403 responses.
+  All cookie logic lives in this one file so it can be swapped for
+  iron-session + bcrypt in one edit.
+
+lib/mock-store.js                     THE IN-MEMORY DATABASE (see Section 3)
+
+lib/dates.js                          tiny date formatting helpers.
+
+
+================================================================================
+ 3. BACKEND EXPLAINED - FUNCTION BY FUNCTION
+================================================================================
+
+The backend is 20 route files under app/api/ - each one is a thin shell
+(check session, parse body, call one store function, map {error,status}
+to an HTTP code) around lib/mock-store.js, which is where the logic lives.
+The store is a faithful twin of the SQL layer: every function is annotated
+with the trigger or procedure it mirrors, and seed replay produces the
+same 57 audit rows the real triggers would.
+
+3.1 The store itself (lib/mock-store.js)
+-----------------------------------------
+  createStore()       builds all 9 "tables" with AUTO_INCREMENT sequence
+                      counters, then replays the seed exactly like
+                      schema.sql + logic.sql + seed.sql: users/lookups,
+                      lost+found inserts (writing the trg_*_after_insert
+                      audit rows), runMatching(1..20) (the 20
+                      CALL sp_find_matches), report 11 -> closed, the 9
+                      claim inserts (claim_pending flips + audit), three
+                      sp_verify_claim runs, one manual rejection.
+                      Lives on globalThis so Next hot reloads do not wipe
+                      the demo mid-presentation.
+
+  runMatching(reportId)   the sp_find_matches twin, see 3.4.
+  addAudit(...)           the audit-trigger twin: one row into auditLog.
+  getDb()                 lazy singleton accessor.
+
+3.2 Auth routes
+---------------
+  POST /api/register  server-side validation (the browser checks too, but
+                      never trust it): name, email shape, phone digits,
+                      password length. createUser() rejects duplicate
+                      email with 409. Session cookie is set on success.
+  POST /api/login     getUserByEmail + checkPassword; "Invalid email or
+                      password" on failure (same message for both - never
+                      reveal which half was wrong). Mock compares plain
+                      text; real mode uses bcryptjs against the hash.
+  POST /api/logout    clears the cookie.
+  GET  /api/me        who am I, or 401.
+
+3.3 Reference data
+------------------
+  GET /api/categories  the 9 lookup rows (dropdown feeds).
+  GET /api/locations   the 8 lookup rows.
+
+3.4 Lost reports
+----------------
+  POST /api/lost           createLostReport(): validates title >= 3 chars
+                           (chk_lost_title), known category/location (the
+                           FKs), date shape, then trg_lost_before_insert's
+                           rule - no future dates. Insert, audit row
+                           (trg_lost_after_insert), then matching runs
+                           immediately (PRD FR4): a new report meets the
+                           existing found items in the same tick.
+  GET  /api/lost/mine      my reports newest first, each with match_count.
+  GET  /api/lost/[id]/matches   my matches for one report, best first -
+                           the UI of required query 1.
+  POST /api/lost/[id]/rematch   re-run matching for my report - the mock
+                           of CALL sp_find_matches(report_id); returns
+                           { matches_created } exactly like the procedure.
+  PATCH /api/lost/[id]     close MY report (403 if not mine); only an
+                           open/matched report may close.
+
+  runMatching(reportId)    THE SCORING, identical to the procedure:
+                             +40  same category (hard filter, not a bonus
+                                  - "a phone is never a match for a wallet")
+                             +30  same location
+                             +20  item found within 7 days AFTER the loss
+                             +10  report title's first word (>= 3 chars)
+                                  appears in the item title (case-insensitive)
+                             threshold: >= 50 to become a Matches row;
+                             existing pairs skipped (the UNIQUE(report_id,
+                             item_id) / INSERT IGNORE semantics); if any
+                             match was created, an 'open' report flips to
+                             'matched'.
+
+3.5 Found items
+---------------
+  POST /api/found          createFoundItem(): same validation family
+                           (chk_found_title, FKs, trg_found_before_insert
+                           no-future-date), insert, audit row.
+  GET  /api/found?...      listFoundItems(): ONLY status='unclaimed' rows
+                           (the view's WHERE), filterable by category,
+                           location, date range and keyword in
+                           title/description, newest first - required
+                           query 2 as an endpoint.
+  GET  /api/found/[id]     one item's full record.
+
+3.6 Claims (the trigger heart)
+------------------------------
+  POST /api/claims         createClaim() re-checks trg_claim_before_insert
+                           IN THE TRIGGER'S ORDER, returning its exact
+                           messages as 409:
+                             item claimed/disposed      -> "This item is no
+                                longer available to claim"
+                             finder claiming own item   -> "You cannot
+                                claim an item you found yourself"
+                             duplicate pending claim    -> "You already
+                                have a pending claim on this item"
+                             linked report not mine     -> "The linked
+                                lost report does not belong to you"
+                           then insert, trg_claim_after_insert (item
+                           unclaimed -> claim_pending), audit row.
+  GET  /api/claims/mine    my claims newest first with admin notes.
+
+3.7 Admin
+---------
+  GET  /api/admin/claims?status=    the queue, rows shaped exactly like
+                           the v_claim_details view (claimant name/email,
+                           item title, linked report title, proof).
+  POST /api/admin/claims/[id]/verify
+                           verifyClaim(): 404 unknown, 409 already
+                           reviewed, 409 if another claim is already
+                           verified on the item (trg_claim_before_update),
+                           then verifyClaimInStore runs sp_verify_claim's
+                           three steps:
+                             1. claim -> verified + reviewed_by + note +
+                                reviewed_at; audit STATUS_CHANGE;
+                                item -> 'claimed'; linked report ->
+                                'resolved' (trg_claim_after_update).
+                             2. every OTHER pending claim on the item ->
+                                rejected with "Another claim was verified
+                                for this item" (+ audit).
+                             3. one Handovers row is recorded.
+  POST /api/admin/claims/[id]/reject
+                           rejectClaim(): reject with note; if no pending
+                           claim remains on the item, the item goes back
+                           to 'unclaimed' (the trigger's rejected branch).
+  GET  /api/admin/stats    getAdminStats(): status counters; hotspots =
+                           lost reports per location (required query 4);
+                           category-wise open vs resolved (query 6);
+                           stale_items = unclaimed over 30 days with
+                           day arithmetic (query 5). Admin only.
+  GET  /api/admin/audit    latest 100 audit rows, newest first - the
+                           trigger-written trail. Admin only.
+
+
+================================================================================
+ 4. sql/ - THE DATABASE, EXPLAINED EXHAUSTIVELY
+================================================================================
+
+The sql/ folder ships in two flavours:
+
+  sql/mysql/  schema.sql + logic.sql + seed.sql + reset.sql
+              - the CANONICAL version for local MySQL 8 (also tested on
+                MariaDB 11). Full triggers, procedures, views.
+  sql/tidb/   00_create_database.sql .. 04_sanity_check.sql + APP_LOGIC.md
+              - the TiDB Cloud version: identical tables/views/data, but
+                everything triggers and procedures did is written out as
+                plain SQL (see Section 6).
+
+4.0 Conventions (both versions)
+-------------------------------
+  utf8mb4 everywhere - true Unicode. ENGINE=InnoDB - transactions and row
+  locks (parsed and ignored by TiDB, honored by MySQL).
+  Surrogate INT AUTO_INCREMENT PKs on every table: no natural key is safe
+  (titles get edited, emails change); ids never change.
+
+4.1 users
+---------
+  user_id       PK AUTO_INCREMENT
+  name          VARCHAR(100) NOT NULL
+  email         VARCHAR(120) NOT NULL UNIQUE - the login name; UNIQUE
+                doubles as the lookup index and blocks double accounts
+  phone         VARCHAR(15) - kept VARCHAR: phones carry '+', spaces and
+                leading zeros; they are not numbers you compute with
+  role          ENUM('user','admin') NOT NULL DEFAULT 'user' - a closed
+                domain of exactly two roles
+  password_hash VARCHAR(100) NOT NULL - bcrypt output (~60 chars)
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP - free
+                provenance on every row
+
+4.2 categories / 4.3 locations        THE LOOKUP TABLES
+  category_id / location_id PK, name UNIQUE (UNIQUE doubles as the list
+  index; two "Library" rows would poison every FK choice), plus the
+  optional building VARCHAR(80). These tables are 3NF in action: the big
+  tables store cheap integer ids, and the spelling of "Laptop/Charger"
+  lives in exactly ONE place.
+
+4.4 lost_reports                       THE "PLEA" TABLE
+  report_id PK
+  user_id      FK -> users ON DELETE RESTRICT - a report is a user's
+               record; deleting the user out from under it is a data-loss
+               bug, so RESTRICT forces deliberate disentangling
+  category_id  FK -> categories ON DELETE RESTRICT
+  location_id  FK -> locations ON DELETE RESTRICT
+  title        VARCHAR(120) NOT NULL + CHECK (CHAR_LENGTH(title) >= 3)
+               - domain rule straight in the DDL
+  description  TEXT NULLable
+  date_lost    DATE NOT NULL
+  status       ENUM('open','matched','resolved','closed')
+               NOT NULL DEFAULT 'open' - the status MACHINE: open ->
+               matched (a match was created) -> resolved (a claim was
+               verified), or open -> closed (the owner gave up)
+  created_at   DEFAULT CURRENT_TIMESTAMP
+
+4.5 found_items                        THE "INVENTORY" TABLE
+  item_id PK; finder_id FK -> users RESTRICT (same reasoning);
+  category_id/location_id FKs RESTRICT; title + the same CHECK;
+  description TEXT; stored_at VARCHAR(100) - where the physical item sits
+  (help desk, warden office) - the field that turns a database row into a
+  real object someone must hand over;
+  date_found DATE NOT NULL;
+  status ENUM('unclaimed','claim_pending','claimed','disposed')
+       NOT NULL DEFAULT 'unclaimed' - the mirror machine, driven almost
+       entirely by triggers: unclaimed -> claim_pending (a claim arrived)
+       -> claimed (claim verified) or back to unclaimed (all claims
+       rejected); disposed is the admin's manual "never returned" state.
+
+4.6 matches                            THE SUGGESTION TABLE
+  match_id PK; report_id FK -> lost_reports ON DELETE CASCADE; item_id
+  FK -> found_items ON DELETE CASCADE (a match is a PAIRING: it has no
+  meaning if either side disappears, so it dies with them);
+  score INT NOT NULL CHECK (score BETWEEN 0 AND 100);
+  created_at.
+  UNIQUE KEY uq_match_pair (report_id, item_id)
+       THE signature constraint of this table: the same pairing can never
+       be suggested twice. It is what makes the procedure's INSERT IGNORE
+       idempotent - re-running matching is always safe.
+
+4.7 claims                             THE TRUST TABLE
+  claim_id PK; item_id FK -> found_items RESTRICT (claims are evidence,
+  they outlive the item's availability); claimant_id FK -> users RESTRICT;
+  report_id FK -> lost_reports ON DELETE SET NULL NULLable - the OPTIONAL
+  link "I also filed a report for this"; deleting that report must not
+  delete the claim, it must only detach the link - SET NULL is the exact
+  referential action for "optional link";
+  proof_text TEXT NOT NULL - the claimant's written evidence;
+  status ENUM('pending','verified','rejected') NOT NULL DEFAULT 'pending';
+  reviewed_by FK -> users ON DELETE SET NULL - who reviewed it; if that
+  admin account ever vanishes, the review survives with a NULL reviewer;
+  admin_note VARCHAR(255) - the reason, shown back to the claimant;
+  created_at / reviewed_at - the two timestamps the "pending > 3 days"
+  and average-resolution queries are built from.
+
+4.8 handovers                          THE RECEIPT TABLE
+  handover_id PK; claim_id FK + UNIQUE -> claims RESTRICT - the UNIQUE
+  converts 1:N into 1:1: exactly one handover per verified claim, no
+  double handovers; handed_by FK -> users RESTRICT; handed_at DATETIME
+  DEFAULT CURRENT_TIMESTAMP; remarks VARCHAR(255). A handover row is the
+  physical "item left the office" event.
+
+4.9 audit_log                          THE BLACK BOX
+  log_id PK; table_name VARCHAR(30); action VARCHAR(30); record_id INT;
+  details VARCHAR(255); performed_at DEFAULT CURRENT_TIMESTAMP.
+  Written ONLY by triggers (or their TiDB app-twins). No FKs BY DESIGN -
+  a log must survive even if the referenced row is deleted; it records
+  INSERT / STATUS_CHANGE / handover events with the exact same sentence
+  the UI shows.
+
+4.10 triggers - clause by clause (sql/mysql/logic.sql)
+------------------------------------------------------
+  trg_lost_before_insert / trg_found_before_insert   BEFORE INSERT
+    IF NEW.date_lost > CURDATE() THEN SIGNAL SQLSTATE '45000' ...
+    BEFORE gives the app the vocabulary of rejection BEFORE the row
+    exists. SIGNAL raises a catchable user-defined error. Why a trigger
+    and not a CHECK? MySQL 8 CHECK constraints cannot call
+    nondeterministic functions like CURDATE() - a case study in where
+    each constraint mechanism belongs.
+
+  trg_lost_after_insert / trg_found_after_insert     AFTER INSERT
+    One sentence into audit_log per new row. AFTER, because the audit
+    must reflect a row that actually landed.
+
+  trg_claim_before_insert   BEFORE INSERT claims - THE BUSINESS RULES,
+    in enforcement order:
+      1. item status IN ('claimed','disposed')   -> reject
+      2. finder_id = claimant_id                 -> reject (no self-
+         claiming, found it yourself)
+      3. EXISTS another pending claim by the same user on the same item
+                                                 -> reject (no spam)
+      4. report_id given but its owner <> claimant -> reject (you cannot
+         anchor your claim to someone else's report)
+    Four rules the schema alone cannot express (they need reads) - this
+    is exactly the workload triggers exist for.
+
+  trg_claim_after_insert    AFTER INSERT
+    item unclaimed -> claim_pending (guarded WHERE status='unclaimed' so
+    a second claim cannot undo 'claimed'), + audit row.
+
+  trg_claim_before_update   BEFORE UPDATE
+    - OLD.status <> 'pending' AND NEW.status <> OLD.status -> reject:
+      a reviewed claim can never be re-reviewed (immutability of verdicts)
+    - NEW.status='verified' while another verified claim exists on the
+      item -> reject: ONE verified claim per item
+    - first review stamps reviewed_at = NOW() automatically.
+
+  trg_claim_after_update    AFTER UPDATE (only when status changed)
+    verified: item -> 'claimed'; linked report -> 'resolved'
+    rejected: if NO other pending claim remains on the item, item
+              claim_pending -> 'unclaimed'
+    + one STATUS_CHANGE audit row. This trigger is the sync engine that
+    keeps three tables consistent from one UPDATE.
+
+  trg_handover_before_insert   BEFORE INSERT
+    the claim must already be 'verified' - you cannot hand over an item
+    whose claim is still pending; plus audit row on AFTER INSERT.
+
+4.11 procedures
+---------------
+  sp_find_matches(IN p_report_id)
+    DECLARE v_created INT DEFAULT 0;
+    INSERT IGNORE INTO matches (report_id, item_id, score)
+      SELECT ... (CASE) + (CASE) + (CASE) + (CASE) ... AS score
+      FROM lost_reports r JOIN found_items f
+        ON f.status IN ('unclaimed','claim_pending')
+      WHERE r.report_id = p_report_id
+        AND r.status IN ('open','matched')
         AND f.category_id = r.category_id
-    ) AS s
-    WHERE s.score >= 50;
-
-    UPDATE LostReports SET status = 'matched'
-    WHERE report_id = ? AND status = 'open' AND ROW_COUNT() > 0;
-    -- (run ROW_COUNT() right after the INSERT IGNORE,
-    --  then this UPDATE)
-
-  Difference: the body of the procedure becomes one big statement the
-  route runs; ROW_COUNT() (rows changed by the last statement) takes
-  the place of the procedure's variable. The identical statement is
-  also in sql/tidb/03_seed.sql, which is how the seeded Matches were
-  produced without the procedure - but the seed's UPDATE ... WHERE
-  report_id IN (SELECT report_id FROM Matches) does the flip for all
-  matching reports at once instead of per report.
-
-SP_VERIFY_CLAIM(claim_id, admin_id, note, remarks)  (APP_LOGIC 7)
-
-  TiDB/app (quoted):
-
-    START TRANSACTION;
-
-    -- admin check first
-    SELECT COUNT(*) FROM Users WHERE user_id = ? AND role = 'admin';
-    -- count = 0 -> 'Only an admin can verify a claim'
-
-    SELECT item_id FROM Claims
-    WHERE claim_id = ? AND status = 'pending' FOR UPDATE;
-    -- null -> 'Claim not found or already reviewed'
-
-    UPDATE Claims SET status = 'verified', reviewed_by = ?,
-           admin_note = ?, reviewed_at = NOW()
-    WHERE claim_id = ?;
-
-    UPDATE Claims SET status = 'rejected', reviewed_by = ?,
-           admin_note = 'Another claim was verified for this item',
-           reviewed_at = NOW()
-    WHERE item_id = ? AND claim_id <> ? AND status = 'pending';
-
-    UPDATE FoundItems SET status = 'claimed'   WHERE item_id = ?;
-    UPDATE LostReports SET status = 'resolved' WHERE report_id = ?;
-
-    INSERT INTO Handovers (claim_id, handed_by, remarks)
-    VALUES (?, ?, ?);
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('Claims', 'STATUS_CHANGE', ?, ?);
-
-    COMMIT;
-
-  Difference: same steps, but the procedure's automatic triggers and
-  exit handler are gone; the route handler wraps this in a MySQL
-  pool.getConnection() + beginTransaction() and rolls back on any
-  thrown error (the file's own wording: TiDB's pessimistic
-  transactions make the FOR UPDATE row lock behave like MySQL's).
-
-TRG_HANDOVER_* (where did the handover trigger land?)
-
-  APP_LOGIC 7 covers the whole verify script, so the handover INSERT
-  happens inside the transaction AFTER the claim was verified by the
-  FOR UPDATE + UPDATE steps - the "only for a verified claim"
-  guarantee comes from the ORDER of the statements rather than from
-  the trg_handover_before_insert rule. Honest gaps to be aware of:
-    - the flattened script shows no AuditLog row for the Handovers
-      table itself, while THE MYSQL VERSION writes that
-      (trg_handover_after_insert); the current mock store DOES write
-      one. [GAP in APP_LOGIC - worth mentioning openly in the viva]
-    - if app code ever ran the handover INSERT outside this script,
-      nothing in a TiDB database would stop it for an unverified
-      claim.
-
-HOW THE MOCK STORE FITS IN
-
-  Today the app runs mock (lib/mock-store.js), and the mock helpers
-  already implement exactly these rules in JavaScript (same messages).
-  So the TiDB conversion plan is: keep the mock logic LOCALLY, change
-  each rule from manipulating arrays into executing the quoted SQL -
-  the app layer does not move, only its insides do.
-
-
-=====================================================================
-4. TECH STACK AND WHY
-=====================================================================
-
-  NEXT.JS (APP ROUTER, PLAIN JAVASCRIPT)
-  One project holds the pages AND the API (route handlers in app/api).
-  No build step between frontend and backend, same origin (no CORS
-  problems), and one language. Plain JavaScript because the team does
-  not need TypeScript; the viva is easier to explain without types.
-
-  BUN
-  The package manager and script runner (bun add, bun run dev). One
-  tool, fast installs, one lockfile (bun.lock). It avoids npm/yarn
-  lockfile conflicts between the two team members.
-
-  MYSQL 8 (LOCAL) AND TIDB CLOUD (CLOUD OPTION)
-  MySQL 8 comes from college labs and supports triggers, stored
-  procedures, views and CHECK constraints - everything the project
-  must demonstrate. TiDB is a MySQL-compatible distributed database
-  whose free tier can host the data in the cloud - the price is that
-  it cannot run the triggers/procedures (section 3).
-
-  MYSQL2 DRIVER WITH RAW SQL (NO ORM)
-  mysql2 is the MySQL (and TiDB) driver for JavaScript. Raw SQL means
-  every query is written by hand and the examiner can see each one.
-  An ORM would hide the SQL behind method calls - this project is
-  graded on the SQL, so the SQL should be visible.
-  [MOCK ONLY as of this writing - mysql2 is not installed yet]
-
-  BCRYPTJS
-  A pure-JavaScript password hashing library. Passwords must never be
-  stored as plain text; bcrypt makes a one-way salted hash. The seed
-  already stores $2b$ hashes that bcryptjs can verify. (Not used by
-  the running app yet because auth is mock.)  [MOCK ONLY]
-
-  IRON-SESSION
-  A tiny library for a signed, encrypted, httpOnly session cookie.
-  (Referenced in the PRD; the mock app uses a plain httpOnly cookie.)
-  [MOCK ONLY]
-
-  BOOTSTRAP 5.3 (CSS FROM CDN)
-  Fast, clean, familiar layout. Loaded as a CSS-only stylesheet link;
-  the app does NOT load Bootstrap's JavaScript, so modals, tabs,
-  toasts and collapsible rows are built with React state, and light /
-  dark mode uses Bootstrap's own data-bs-theme attribute set on the
-  html element (components/ThemeToggle.js).
-
-
-=====================================================================
-5. HOW THE APP IS STRUCTURED
-=====================================================================
-
-ARCHITECTURE IN ONE DIAGRAM
-
-  +---------------------+
-  |   Browser pages     |   app/*/page.js  ("use client")
-  |   (React components)|   components/*.js
-  +----------+----------+
-             |  every request goes through one file:
-             v
-  +---------------------+
-  |      lib/api.js     |   one function per endpoint, throws
-  |   (all fetch calls) |   Error(data.error) on non-2xx responses
-  +----------+----------+
-             |  fetch("/api/...", { credentials: "same-origin" })
-             v
-  +---------------------+
-  |  Route handlers     |   app/api/.../route.js
-  |   (Next.js backend) |
-  +----------+----------+
-             |  MOCK NOW: helper calls into lib/mock-store.js
-             |  REAL LATER: mysql2 runs the SQL documented in
-             |             sql/tidb/APP_LOGIC.md (or the triggers
-             |             fire themselves on sql/mysql/)
-             v
-  +---------------------+          +---------------------+
-  |   MySQL 8 local     |   or     |   TiDB Cloud        |
-  |   triggers + procs  |          |   tables + views    |
-  +---------------------+          +---------------------+
-
-MOCK-FIRST: HOW IT WORKS RIGHT NOW
-
-  lib/mock-store.js holds the fake database in memory. It mirrors
-  sql/mysql/seed.sql exactly (10 users, 9 categories, 8 locations,
-  20 lost reports, 20 found items, 9 claims, 57 audit rows, 28 match
-  rows computed by the same scoring formula) and re-implements the
-  same rules the MySQL triggers enforce, including the same error
-  messages. The store lives on globalThis so Next.js hot reloads do
-  not wipe it during a demo.
-
-  Every route handler is deliberately thin: it checks who the user is
-  (lib/mock-auth.js reads an httpOnly cookie), calls one helper
-  function from mock-store, and returns JSON. So replacing a handler's
-  body with real SQL does not change anything else.
-
-HOW A ROUTE IS SWITCHED FROM MOCK TO REAL (the plan, not done yet)
-  [NOT BUILT YET]
-
-  1. open the route file, e.g. app/api/found/[id]/route.js
-  2. replace the mock-store call inside the handler body with a mysql2
-     query using the lib/db.js pool and ? placeholders
-     (against MySQL OR TiDB - the connection string decides which)
-  3. keep the EXACT response shape (the snake_case field names) and
-     the same HTTP status codes; the frontend already expects them
-  4. delete that handler's now-unused helper from mock-store.js
-  5. repeat in the order: auth -> found/lost -> claims -> admin.
-
-  lib/mock-auth.js is a single small file on purpose: it holds all the
-  cookie logic so it can be replaced wholesale by iron-session.
-
-MAIN FOLDERS AND FILES
-
-  app/                    pages and API route handlers
-  app/layout.js           root layout: Bootstrap CDN css link, Google
-                          font link, <Navbar/>, <ToastHost/>, and a
-                          tiny inline script that applies the saved
-                          light or dark theme before first paint
-  app/page.js             landing page: tagline + login/register tabs
-  app/dashboard/page.js   greeting, action cards, counters, recent
-                          possible matches
-  app/report-lost/page.js lost report form
-  app/report-found/page.js found item form (plus stored_at)
-  app/browse/page.js      filter bar + card grid of unclaimed items
-  app/item/[id]/page.js   item detail + claim form
-  app/my-reports/page.js  own reports; rows expand to their matches
-                          (score progress bar); "Re-run matching" and
-                          "Close report" buttons
-  app/my-claims/page.js   own claims with status and admin note
-  app/admin/page.js       claim queue (verify/reject modals), stats,
-                          audit log. Admin only.
-  components/             Navbar, AuthGuard, StatusBadge, ToastHost,
-                          ItemCard, Modal, ThemeToggle
-  lib/api.js              ALL frontend fetch calls, one per endpoint
-  lib/mock-store.js       in-memory fake DB mirroring sql/mysql/seed.sql
-  lib/mock-auth.js        mock session cookie helpers
-  lib/toast.js            showToast(message, type) helper
-  lib/dates.js            todayStr() helper for date input maxima
-  sql/mysql/              full version for local MySQL 8: schema,
-                          logic (triggers/procedures/views), seed,
-                          reset
-  sql/tidb/               TiDB Cloud version: five numbered files +
-                          APP_LOGIC.md (section 2 and 3)
-  README.md               setup, TiDB instructions, mock-store notes
-  package.json            scripts: dev, build, start, lint (Bun)
-
-WHAT EACH PAGE SHOWS
-
-  /                  login and register tabs; on success -> /dashboard
-  /dashboard         "Hello, <name>", three action cards, counters
-                     (my open reports, my pending claims, matches
-                     found) and the five best recent matches
-  /report-lost       title, category, location, date (max = today),
-                     description; creates the report and runs matching
-  /report-found      same plus "currently stored at"; item becomes
-                     unclaimed
-  /browse            keyword / category / location / date range filters
-                     over unclaimed found items (the view
-                     v_open_found_items in real mode)
-  /item/[id]         full item details and the claim form (proof text
-                     + optional link to one of my open lost reports);
-                     if the item is not unclaimed or claim_pending the
-                     form is disabled and a badge is shown instead
-  /my-reports        reports with status badges; expanding a row shows
-                     its matches (score as a progress bar)
-  /my-claims         claims with status badges and the admin note
-  /admin             claim queue (pending claims, verify/reject with a
-                     note in a modal), stats (counters, hotspot
-                     locations, category counts, items unclaimed over
-                     30 days), audit log table
-
-PAGE GUARDS
-
-  Every page except / wraps itself in components/AuthGuard.js, which
-  asks GET /api/me who is logged in. No session -> redirect to /.
-  The /admin page passes adminOnly, so a non-admin is redirected to
-  /dashboard. The Admin link in the navbar only shows for admins.
-  [MOCK ONLY - the session is a mock cookie for now]
-
-
-=====================================================================
-6. DATABASE DESIGN
-=====================================================================
-
-DATABASE: lostfound  (created by
-
-  CREATE DATABASE IF NOT EXISTS lostfound CHARACTER SET utf8mb4;
-
-which appears in sql/tidb/00_create_database.sql and at the top of
-sql/tidb/01_schema.sql; the MySQL version's sql/mysql/reset.sql does
-DROP DATABASE IF EXISTS lostfound; CREATE DATABASE lostfound ...)
-
-ER DIAGRAM (ASCII)
-
-  Users (user_id PK)
-    | 1
-    |  <one user writes many reports; finds many items;
-    |    can claim many items; can review claims; can hand over>
-    |
-    +---< LostReports (report_id PK) >---\ FK: user_id, category_id,
-    |            |                        location_id
-    |            | 1
-    |            +---< Matches (match_id PK) >---+
-    |                    | FK: report_id,         |
-    |                    |     UNIQUE(report_id, item_id)
-    |                    v N                      | N
-    +---< FoundItems (item_id PK) >---------------+
-    |            |        FK: finder_id, category_id, location_id
-    |            | 1
-    |            +---< Claims (claim_id PK) >---+
-    |                    | FK: item_id,         |
-    |                    |     claimant_id,     v 1..1
-    |                    |     report_id (NULL)+---< Handovers
-    |                    |                      (handover_id PK,
-    |                    v                       claim_id UNIQUE FK)
-    +---< AuditLog (log_id PK)   <- written only by triggers
-                                    (by the app on TiDB)
-
-  Categories (category_id PK)  ...  Locations (location_id PK,
-                                             building)
-  both are lookup tables referenced by LostReports and FoundItems.
-
-  NOTE: this layout is IDENTICAL in sql/mysql/schema.sql and
-  sql/tidb/01_schema.sql - the TiDB version drops only the logic
-  section, not the shapes (verified by reading 01_schema.sql).
-
-
-TABLES AND COLUMNS (exactly as in sql/mysql/schema.sql; the same SQL
-is in sql/tidb/01_schema.sql)
-
-USERS - who can log in and own things
-
-  CREATE TABLE Users (
-    user_id        INT AUTO_INCREMENT PRIMARY KEY,
-    name           VARCHAR(100) NOT NULL,
-    email          VARCHAR(120) NOT NULL UNIQUE,
-    phone          VARCHAR(15),
-    role           ENUM('user','admin') NOT NULL DEFAULT 'user',
-    password_hash  VARCHAR(100) NOT NULL,          -- bcrypt hash
-    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB;
-
-  user_id      surrogate primary key; AUTO_INCREMENT gives a new
-               number on insert so no code has to invent ids.
-  name         the person's display name.
-  email        login name; UNIQUE means two accounts cannot share one.
-  phone        contact number.
-  role         closed list: 'user' or 'admin'; admin unlocks extra
-               routes.
-  password_hash bcrypt hash only - the plain password is never stored.
-  created_at   stamped automatically.
-
-CATEGORIES - normalized item categories (9 seeded)
-
-  CREATE TABLE Categories (
-    category_id  INT AUTO_INCREMENT PRIMARY KEY,
-    name         VARCHAR(50) NOT NULL UNIQUE
-  ) ENGINE=InnoDB;
-
-  Seed: Phone, Wallet, ID Card, Keys, Bag, Laptop/Charger, Books,
-  Clothing, Other.
-
-LOCATIONS - normalized places on campus (8 seeded)
-
-  CREATE TABLE Locations (
-    location_id  INT AUTO_INCREMENT PRIMARY KEY,
-    name         VARCHAR(80) NOT NULL UNIQUE,
-    building     VARCHAR(80)
-  ) ENGINE=InnoDB;
-
-  Seed: Library (Central Library), Mess (Dining Hall), Hostel Block A,
-  Hostel Block B, Academic Block, Sports Ground, Canteen, Auditorium.
-
-LOSTREPORTS - "I lost this"
-
-  CREATE TABLE LostReports (
-    report_id    INT AUTO_INCREMENT PRIMARY KEY,
-    user_id      INT NOT NULL,
-    category_id  INT NOT NULL,
-    location_id  INT NOT NULL,
-    title        VARCHAR(120) NOT NULL,
-    description  TEXT,
-    date_lost    DATE NOT NULL,
-    status       ENUM('open','matched','resolved','closed')
-                 NOT NULL DEFAULT 'open',
-    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_lost_user     FOREIGN KEY (user_id)  REFERENCES
-        Users(user_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_lost_category FOREIGN KEY (category_id) REFERENCES
-        Categories(category_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_lost_location FOREIGN KEY (location_id) REFERENCES
-        Locations(location_id) ON DELETE RESTRICT,
-    CONSTRAINT chk_lost_title   CHECK (CHAR_LENGTH(title) >= 3)
-  ) ENGINE=InnoDB;
-
-  status meanings: open = still looking, matched = matches exist,
-  resolved = the item came back, closed = owner gave up.
-
-FOUNDITEMS - "someone handed this in"
-
-  CREATE TABLE FoundItems (
-    item_id      INT AUTO_INCREMENT PRIMARY KEY,
-    finder_id    INT NOT NULL,
-    category_id  INT NOT NULL,
-    location_id  INT NOT NULL,
-    title        VARCHAR(120) NOT NULL,
-    description  TEXT,
-    date_found   DATE NOT NULL,
-    stored_at    VARCHAR(100),          -- where the item is kept now
-    status       ENUM('unclaimed','claim_pending','claimed','disposed')
-                 NOT NULL DEFAULT 'unclaimed',
-    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ... same three FK constraints as LostReports (RESTRICT) ...
-    CONSTRAINT chk_found_title   CHECK (CHAR_LENGTH(title) >= 3)
-  ) ENGINE=InnoDB;
-
-  status meanings: unclaimed = waiting, claim_pending = someone has a
-  pending claim, claimed = handed back, disposed = discarded.
-
-MATCHES - a suggested pair of lost report and found item, with a score
-
-  CREATE TABLE Matches (
-    match_id    INT AUTO_INCREMENT PRIMARY KEY,
-    report_id   INT NOT NULL,
-    item_id     INT NOT NULL,
-    score       INT NOT NULL,
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_match_pair   UNIQUE (report_id, item_id),
-    CONSTRAINT fk_match_report FOREIGN KEY (report_id)
-        REFERENCES LostReports(report_id) ON DELETE CASCADE,
-    CONSTRAINT fk_match_item   FOREIGN KEY (item_id)
-        REFERENCES FoundItems(item_id)   ON DELETE CASCADE,
-    CONSTRAINT chk_match_score CHECK (score BETWEEN 0 AND 100)
-  ) ENGINE=InnoDB;
-
-  Matches is a JUNCTION table (a many-to-many resolved into a table of
-  pairs). The pair attribute score justifies its own table.
-
-CLAIMS - "that found item is mine", with proof and review
-
-  CREATE TABLE Claims (
-    claim_id     INT AUTO_INCREMENT PRIMARY KEY,
-    item_id      INT NOT NULL,
-    claimant_id  INT NOT NULL,
-    report_id    INT NULL,     -- optional link to my lost report
-    proof_text   TEXT NOT NULL,
-    status       ENUM('pending','verified','rejected')
-                 NOT NULL DEFAULT 'pending',
-    reviewed_by  INT NULL,
-    admin_note   VARCHAR(255),
-    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at  DATETIME NULL,
-    CONSTRAINT fk_claim_item     FOREIGN KEY (item_id)
-        REFERENCES FoundItems(item_id)   ON DELETE RESTRICT,
-    CONSTRAINT fk_claim_claimant FOREIGN KEY (claimant_id)
-        REFERENCES Users(user_id)        ON DELETE RESTRICT,
-    CONSTRAINT fk_claim_report   FOREIGN KEY (report_id)
-        REFERENCES LostReports(report_id) ON DELETE SET NULL,
-    CONSTRAINT fk_claim_reviewer FOREIGN KEY (reviewed_by)
-        REFERENCES Users(user_id)        ON DELETE SET NULL
-  ) ENGINE=InnoDB;
-
-HANDOVERS - one row per verified claim: who collected it and when
-
-  CREATE TABLE Handovers (
-    handover_id  INT AUTO_INCREMENT PRIMARY KEY,
-    claim_id     INT NOT NULL UNIQUE,
-    handed_by    INT NOT NULL,
-    handed_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    remarks      VARCHAR(255),
-    CONSTRAINT fk_handover_claim FOREIGN KEY (claim_id)
-        REFERENCES Claims(claim_id) ON DELETE RESTRICT,
-    CONSTRAINT fk_handover_admin FOREIGN KEY (handed_by)
-        REFERENCES Users(user_id)   ON DELETE RESTRICT
-  ) ENGINE=InnoDB;
-
-AUDITLOG - history written only by triggers (by the app on TiDB)
-
-  CREATE TABLE AuditLog (
-    log_id        INT AUTO_INCREMENT PRIMARY KEY,
-    table_name    VARCHAR(30)  NOT NULL,
-    action        VARCHAR(30)  NOT NULL,
-    record_id     INT,
-    details       VARCHAR(255),
-    performed_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB;
-
-
-NORMALIZATION UP TO 3NF
-
-  1NF (first normal form): every column holds one simple value, rows
-  are unique (primary keys). Names are not stored as lists.
-
-  2NF (second normal form): every column depends on the WHOLE key.
-  Each table has a single-column key, so this holds.
-
-  3NF (third normal form): no column depends on another non-key
-  column. This is why Categories and Locations are separate tables:
-
-    - if LostReports stored "Phone" as text and the category were
-      later renamed to "Mobile Phone", every old row would still say
-      "Phone" (update anomaly).
-    - a new report could spell it "phone", "Phone", "PHONE" and counts
-      per category would split (insertion inconsistency).
-    - deleting the last report of a category would also delete the
-      knowledge that the category exists (deletion anomaly).
-
-  With a category_id foreign key the name lives in ONE place
-  (Categories) and reports reference it. Same reasoning forLocations.
-
-  Why Matches is its own table: the relationship user-reported-lost vs
-  user-found-item carries its own attribute (score) and its own rules
-  (a report can have many matches; the same pair must appear once).
-  That is a textbook many-to-many with attributes -> junction table.
-
-  Why Claims is its own table: a claim is not just an update to an
-  item - it has its own life (proof, status, review). An item can have
-  SEVERAL claims (competing), one of which is verified.
-
-
-CONSTRAINT TYPES USED, WITH ONE EXAMPLE EACH
-
-  PRIMARY KEY      the row identifier. Example: Users.user_id
-                   INT AUTO_INCREMENT PRIMARY KEY.
-  FOREIGN KEY      a reference that must exist. Example:
-                   fk_lost_user (user_id -> Users).
-  ON DELETE RESTRICT  deleting the parent is refused while children
-                   exist. Example: you cannot delete a User who still
-                   has lost reports - history is protected.
-  ON DELETE CASCADE  deleting the parent deletes the children.
-                   Example: deleting a LostReport deletes its Matches
-                   rows - matches of a deleted report are meaningless.
-  ON DELETE SET NULL  deleting the parent nulls the child column.
-                   Example: deleting a report linked to a claim sets
-                   Claims.report_id to NULL - the claim itself must
-                   survive, only the optional link disappears.
-  UNIQUE           no duplicates. Users.email (two accounts cannot
-                   share an email), Matches (report_id, item_id), and
-                   Handovers claim_id (one handover per claim).
-  NOT NULL         the value is required. Example: title, date_lost,
-                   status on LostReports.
-  CHECK            an arbitrary condition. Examples:
-                   CHECK (CHAR_LENGTH(title) >= 3) and
-                   CHECK (score BETWEEN 0 AND 100).
-  ENUM             closed list of strings. Example: LostReports.status
-                   must be open / matched / resolved / closed.
-  DEFAULT          value assigned when not given. Example:
-                   status DEFAULT 'open',
-                   created_at DEFAULT CURRENT_TIMESTAMP.
-
-
-=====================================================================
-7. TRIGGERS
-=====================================================================
-
-(Applies to the sql/mysql/ version. On TiDB nothing below exists -
-section 3's mapping table shows where each rule went.)
-
-A TRIGGER is code the database runs automatically (BEFORE or AFTER an
-INSERT, UPDATE or DELETE on one table) for every affected row. Nobody
-calls it; it fires. We use triggers so the RULES live next to the
-data: even a student typing SQL by hand in a mysql terminal cannot
-break them. This is the "why": application code can be bypassed; the
-database cannot.
-
-SIGNAL SQLSTATE '45000'
-
-  SIGNAL is how a trigger or procedure ABORTS with a custom error.
-  SQLSTATE 45000 is the reserved class for user-defined errors. The
-  full pattern is:
-
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '<message>';
-
-  The message travels to the client as the error's sqlMessage. The app
-  catches it and turns it into an HTTP 409 response with that exact
-  text.
-
-WHY THE DATE CHECKS ARE TRIGGERS AND NOT CHECK CONSTRAINTS
-
-  MySQL does not allow non-deterministic functions like CURDATE()
-  inside a CHECK constraint, so the "no future dates" rule needs a
-  BEFORE INSERT trigger instead.
-
-THE 10 TRIGGERS OF sql/mysql/logic.sql
-
----------------------------------------------------------------
-1. trg_lost_before_insert  -  LostReports, BEFORE INSERT
----------------------------------------------------------------
-
-  CREATE TRIGGER trg_lost_before_insert BEFORE INSERT ON LostReports
-  FOR EACH ROW
-  BEGIN
-    IF NEW.date_lost > CURDATE() THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-        'Date lost cannot be in the future';
-    END IF;
-  END
-
-  NEW is the row being inserted. If the date is in the future, stop.
-  Example: a user picks tomorrow's date in the form. The insert dies
-  and the user sees the message above (HTTP 409 in the app).
-
----------------------------------------------------------------
-2. trg_found_before_insert  -  FoundItems, BEFORE INSERT
----------------------------------------------------------------
-
-  Same pattern on FoundItems with
-    'Date found cannot be in the future'.
-
----------------------------------------------------------------
-3. trg_lost_after_insert  -  LostReports, AFTER INSERT
----------------------------------------------------------------
-
-  CREATE TRIGGER trg_lost_after_insert AFTER INSERT ON LostReports
-  FOR EACH ROW
-  BEGIN
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('LostReports', 'INSERT', NEW.report_id,
-            CONCAT('Lost report "', NEW.title, '" filed by user ',
-            NEW.user_id));
-  END
-
-  It runs after the row exists, so NEW.report_id has its
-  AUTO_INCREMENT value, and writes one audit row. Why AFTER (not
-  BEFORE): the id of a brand new row exists only after insert.
-
----------------------------------------------------------------
-4. trg_found_after_insert  -  FoundItems, AFTER INSERT
----------------------------------------------------------------
-
-  Same pattern with ('FoundItems', 'INSERT', NEW.item_id,
-  'Found item "<title>" reported by user <finder_id>').
-
----------------------------------------------------------------
-5. trg_claim_before_insert  -  Claims, BEFORE INSERT
-   (THE BIG ONE)
----------------------------------------------------------------
-
-  DECLAREs local variables, loads the item's current status and
-  finder, then applies four rules in order:
-
-    - item already claimed or disposed ->
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-        'This item is no longer available to claim'
-    - claimant is the finder ->
-        'You cannot claim an item you found yourself'
-    - the claimant already has a PENDING claim on this item ->
-        'You already have a pending claim on this item'
-    - the linked lost report exists and is not the claimant's ->
-        'The linked lost report does not belong to you'
-
-  Why BEFORE: it can still ABORT the insert. AFTER triggers cannot
-  cancel an insert - they only react to one that happened.
-
----------------------------------------------------------------
-6. trg_claim_after_insert  -  Claims, AFTER INSERT
----------------------------------------------------------------
-
-    UPDATE FoundItems SET status = 'claim_pending'
-    WHERE item_id = NEW.item_id AND status = 'unclaimed';
-
-    INSERT INTO AuditLog (table_name, action, record_id, details)
-    VALUES ('Claims', 'INSERT', NEW.claim_id,
-            CONCAT('User ', NEW.claimant_id, ' claimed item ',
-            NEW.item_id));
-
-  The moment a claim is submitted, the item becomes claim_pending so
-  other users can see it is in play (but a second claim by the same
-  user is blocked by trigger 5).
-
----------------------------------------------------------------
-7. trg_claim_before_update  -  Claims, BEFORE UPDATE
----------------------------------------------------------------
-
-  Three rules:
-    - already reviewed (pending -> reviewed again) -> block:
-        'This claim has already been reviewed'
-    - changing to verified while ANOTHER claim on the same item is
-      already verified -> block:
-        'Another claim is already verified for this item'
-    - stamp reviewed_at automatically:
-        IF OLD.status = 'pending' AND NEW.status <> 'pending'
-        AND NEW.reviewed_at IS NULL THEN SET NEW.reviewed_at = NOW();
-
----------------------------------------------------------------
-8. trg_claim_after_update  -  Claims, AFTER UPDATE
----------------------------------------------------------------
-
-  Keeps statuses in sync when a claim flips state:
-
-    verified  ->  item becomes 'claimed';
-                  if the claim links a report, that report becomes
-                  'resolved'.
-    rejected  ->  if no OTHER pending claim remains on the item, the
-                  item goes back to 'unclaimed' (only when its
-                  current status is 'claim_pending').
-
-  then writes: AuditLog ('Claims', 'STATUS_CHANGE', claim_id,
-  'Claim <id> changed from <old> to <new>').
-
-  Why not a trigger for REJECTING the other pending claims? A trigger
-  cannot safely update its OWN table (Claims) inside itself; after
-  update row-level triggers modifying other rows of the same table
-  causes cascading, undefined behaviour, so that job belongs to the
-  stored procedure sp_verify_claim (section 8).
-
----------------------------------------------------------------
-9. trg_handover_before_insert  -  Handovers, BEFORE INSERT
----------------------------------------------------------------
-
-  Reads the claim's status; if it is not 'verified':
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-    'A handover can only be recorded for a verified claim'
-  This single rule is what makes "handover cannot be recorded for an
-  unverified claim" a database guarantee.
-
----------------------------------------------------------------
-10. trg_handover_after_insert  -  Handovers, AFTER INSERT
----------------------------------------------------------------
-
-  Writes AuditLog ('Handovers', 'INSERT', handover_id,
-  'Item handed over for claim <id> by admin <id>').
-
-
-=====================================================================
-8. STORED PROCEDURES AND THE TRANSACTION
-=====================================================================
-
-(MySQL version, sql/mysql/logic.sql. On TiDB: section 3.)
-
-A STORED PROCEDURE is a saved SQL program stored in the database and
-called with CALL. It can take parameters and run many statements.
-
----------------------------------------------------------------
-sp_find_matches(IN p_report_id INT)
----------------------------------------------------------------
-
-  The scoring engine. Called once when a lost report is created (the
-  report route runs matching on creation - FR4) and again by the
-  "Re-run matching" button on /my-reports.
-
-  What it considers: found items whose status is 'unclaimed' or
-  'claim_pending', in the SAME CATEGORY as the lost report, while the
-  report is still 'open' or 'matched'. (A phone is never a match for
-  a wallet - categories must agree.)
-
-  The score (exactly as in sql/mysql/logic.sql):
-
-    (CASE WHEN f.category_id = r.category_id THEN 40 ELSE 0 END)
-  + (CASE WHEN f.location_id = r.location_id THEN 30 ELSE 0 END)
-  + (CASE WHEN f.date_found
-          BETWEEN r.date_lost AND DATE_ADD(r.date_lost, INTERVAL 7 DAY)
-          THEN 20 ELSE 0 END)
-  + (CASE WHEN CHAR_LENGTH(SUBSTRING_INDEX(r.title, ' ', 1)) >= 3
-          AND LOCATE(LOWER(SUBSTRING_INDEX(r.title, ' ', 1)),
-                     LOWER(f.title)) > 0
-         THEN 10 ELSE 0 END)
-
-  Line by line:
-    - +40 same category (always true here, since other categories are
-      filtered out already - the constant 40 says "category match is
-      the base requirement").
-    - +30 same location where lost/found.
-    - +20 the found date lies in the 7 days AFTER the loss date
-      (BETWEEN is inclusive on both ends).
-    - +10 the first word of the lost title (with length >= 3 so short
-      words like "HP" do not fire everywhere) appears anywhere in the
-      found title, case-insensitively (LOCATE on LOWER).
-
-  INSERT IGNORE skips existing (report_id, item_id) pairs - the
-  UNIQUE(report_id, item_id) constraint makes re-runs safe.
-
-  Only rows with score >= 50 are inserted.
-
-  If any new row was created, an open report becomes 'matched'.
-
-  It returns ONE ROW:
+      (score >= 50 in the outer WHERE);
+    SET v_created = ROW_COUNT();
+    IF v_created > 0 THEN UPDATE lost_reports SET status='matched'
+      WHERE report_id = p_report_id AND status='open'; END IF;
     SELECT v_created AS matches_created;
-
-  WORKED EXAMPLE (verified against the actual seed results):
-  report 1 = 'Black iPhone 13', category 1 Phone, location 1 Library,
-  lost 6 days ago.
-    item 1  'Black iPhone',  Phone, Library, found 5d ago:
-            40 + 30 + 20 + ("black" in "black iphone" -> 10) = 100
-    item 11 'Redmi phone',   Phone, Mess,    found 2d ago:
-            40 + 0 + 20 + 0 = 60
-    item 13 'Samsung phone', Phone, Library, found 4d ago:
-            40 + 30 + 20 + 0 = 90
-    item 12 is 'Other' category -> skipped entirely.
-  All three (100, 60, 90) beat the 50 cut-off, so all three become
-  matches, and report 1's status becomes 'matched'. Across all 20
-  reports the seed produces exactly 28 match rows (the sanity check
-  file expects Matches 28), spread over 18 matched reports.
-
-  HOW THE APP USES IT: POST /api/lost (create report) calls matching
-  immediately; POST /api/lost/[id]/rematch re-runs it and reports
-  matches_created to the UI as a toast. GET /api/lost/[id]/matches
-  returns ordered matches (best score first) for the expanded row.
-  [MOCK ONLY]
-
----------------------------------------------------------------
-sp_verify_claim(p_claim_id INT, p_admin_id INT,
-                p_note VARCHAR(255), p_remarks VARCHAR(255))
----------------------------------------------------------------
-
-  The "verify and hand over" step, done as ONE transaction. From
-  sql/mysql/logic.sql, the essential steps:
-
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-      ROLLBACK;
-      RESIGNAL;
-    END;
-
-    IF NOT EXISTS (SELECT 1 FROM Users
-                   WHERE user_id = p_admin_id AND role = 'admin') THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-        'Only an admin can verify a claim';
-    END IF;
-
-    START TRANSACTION;
-
-    SELECT item_id INTO v_item FROM Claims
-    WHERE claim_id = p_claim_id AND status = 'pending'
-    FOR UPDATE;
-
-    IF v_item IS NULL THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-        'Claim not found or already reviewed';
-    END IF;
-
-    UPDATE Claims
-    SET status = 'verified', reviewed_by = p_admin_id,
-        admin_note = p_note
-    WHERE claim_id = p_claim_id;
-
-    UPDATE Claims
-    SET status = 'rejected', reviewed_by = p_admin_id,
-        admin_note = 'Another claim was verified for this item'
-    WHERE item_id = v_item AND claim_id <> p_claim_id
-      AND status = 'pending';
-
-    INSERT INTO Handovers (claim_id, handed_by, remarks)
-    VALUES (p_claim_id, p_admin_id, p_remarks);
-
-    COMMIT;
-
-  Step by step:
-    1. the exit handler: ON ANY SQL ERROR -> ROLLBACK + RESIGNAL.
-    2. admin check before even starting.
-    3. SELECT ... FOR UPDATE locks the pending claim's row so two
-       admins clicking Verify at the same moment cannot both succeed.
-    4. marks the claim verified - THE TRIGGERS 7 AND 8 FIRE HERE
-       (one-verified-per-item check, reviewed_at stamp, item ->
-       claimed, linked report -> resolved, audit rows).
-    5. every OTHER pending claim on the same item is rejected with
-       the note "Another claim was verified for this item" (the job a
-       trigger cannot do on its own table).
-    6. a Handover row records the physical return.
-    7. COMMIT makes it permanent.
-
-WHAT IS A TRANSACTION AND WHY HERE
-
-  A transaction is a group of statements that either ALL happen or
-  NONE happen.
-
-  ACID, with this project as the example:
-
-    A - ATOMICITY: all steps succeed together or none do. If the
-        Handovers INSERT failed halfway, the ROLLBACK undoes the
-        verified status, the item change and the other rejections -
-        the database never shows a half-verified claim. The exit
-        handler guarantees this: any SQL error jumps to the handler.
-
-    C - CONSISTENCY: every rule stays true (one verified claim per
-        item, item claimed <-> verified claim, handover only for
-        verified). Transactions plus triggers enforce them together.
-
-    I - ISOLATION: two admins verifying the same claim at once do not
-        interleave; FOR UPDATE + the transaction keeps them serial.
-
-    D - DURABILITY: after COMMIT the data survives a crash (InnoDB
-        writes to a transaction log on disk).
-
-  That is also why the procedure, not the route, owns the logic: the
-  route (app/api/admin/claims/[id]/verify in real mode) just runs
-  CALL sp_verify_claim(?, ?, ?, ?). In mock mode the same behaviour is
-  re-implemented in mock-store.js verifyClaim(); on TiDB it becomes
-  the flattened transaction quoted in section 3 (APP_LOGIC 7).
-  [MOCK ONLY]
-
-
-=====================================================================
-9. VIEWS
-=====================================================================
-
-A VIEW is a saved SELECT that can be used like a table. It stores no
-data itself; it runs its query on use. Views give a stable, simple
-name for a complicated join and hide the join from callers. Both
-views exist in EXACTLY the same form in sql/mysql/logic.sql and
-sql/tidb/02_views.sql. [DONE in both SQL folders; the app does not
-read them yet - the routes are mock]  [MOCK ONLY]
-
-v_open_found_items - the list the Browse page shows
-
-  CREATE OR REPLACE VIEW v_open_found_items AS
-  SELECT f.item_id, f.title, f.description, f.date_found, f.stored_at,
-         f.status, c.name AS category, l.name AS location
-  FROM FoundItems f
-  JOIN Categories c ON c.category_id = f.category_id
-  JOIN Locations  l ON l.location_id = f.location_id
-  WHERE f.status = 'unclaimed';
-
-  Purpose: every unclaimed found item with readable category and
-  location names. Why useful: the browse/filter route becomes a one
-  line SELECT FROM v_open_found_items WHERE ... instead of repeating
-  three joins everywhere.
-
-v_claim_details - the admin claim queue
-
-  CREATE OR REPLACE VIEW v_claim_details AS
-  SELECT cl.claim_id, cl.status, cl.proof_text, cl.admin_note,
-         cl.created_at, cl.reviewed_at,
-         u.user_id AS claimant_id, u.name AS claimant_name,
-         u.email AS claimant_email,
-         f.item_id, f.title AS item_title,
-         r.report_id, r.title AS report_title
-  FROM Claims cl
-  JOIN Users u      ON u.user_id = cl.claimant_id
-  JOIN FoundItems f ON f.item_id = cl.item_id
-  LEFT JOIN LostReports r ON r.report_id = cl.report_id;
-
-  Purpose: the claim queue row with claimant, item and (optional)
-  linked report title. LEFT JOIN with LostReports: report_id may be
-  NULL (a claim need not link a report), and a LEFT JOIN keeps the
-  row with report_title = NULL in that case; an INNER JOIN would
-  hide exactly those claims that the admin must still see.
-  [MOCK ONLY - the mock admin route computes the same shape]
-
-
-=====================================================================
-10. SEED DATA
-=====================================================================
-
-(load: sql/mysql/seed.sql for MySQL with triggers and CALLs;
- sql/tidb/03_seed.sql for TiDB with the effects written out. The
- data is the same in both.)
-
-sql/seed (both versions) loads:
-
-  - 10 users (1 admin + 9 users). Demo logins:
-      admin@test.com / admin123        (admin, user_id 1)
-      user@test.com  / user123         (Anchal Singh, user_id 2)
-      every other user also uses user123
-  - 9 categories, 8 locations
-  - 20 lost reports (report_ids 1..20) with dates relative to today
-    (CURDATE() - INTERVAL n DAY) so the data never ages.
-  - 20 found items (item_ids 1..20), also dated relative to today.
-  - matching runs for every report: 18 of the 20 reports find at
-    least one match; exactly 28 match rows in total (the TiDB sanity
-    check file 04_sanity_check.sql asserts Matches 28, and the mock
-    store computes the same number with the same formula).
-  - report 11 'Water bottle' is CLOSED by hand ("One owner gave up
-    looking") - on purpose, so the closed status exists.
-  - 9 claims created in all three states: 4 pending (1, 5, 6, 7),
-    3 verified (2, 3, 8) and 2 rejected (4 directly, 9
-    automatically).
-  - the three verified claims run CALL sp_verify_claim, which also
-    records Handovers and (both versions) back-dates review times so
-    aggregate queries have realistic numbers.
-
-DELIBERATELY INTERESTING SEED ROWS
-
-  - Stale items (unclaimed over 30 days): item 9 'Scooter keys'
-    (40 days), item 10 'Black umbrella' (35), item 19 'Steel lunch
-    box' (45) - these drive the admin stats list.
-  - Report 14 'Library card': NO matches (stays 'open') - drives the
-    LEFT JOIN ... IS NULL story (reports with no matches).
-  - Item 3 'Student ID card': TWO pending claims (6 by Priya, 7 by
-    Sneha) - shows competing claims; verifying one auto-rejects the
-    other with "Another claim was verified for this item".
-  - Item 9 was FOUND BY user 2 (Anchal) - lets you demo the trigger
-    error "You cannot claim an item you found yourself".
-
-  After the seed the statuses are:
-    reports: 1 open (report 14), 15 matched, 3 resolved (2, 8, 19),
-             1 closed (11)
-    items:   14 unclaimed, 3 claim_pending (1, 3, 6), 3 claimed
-             (2, 8, 17)
-    audit:   exactly 57 rows written (40 for the reports/items, 9 for
-             the claims, 5 status changes, 3 handovers).
-
-
-=====================================================================
-11. THE 12 REQUIRED QUERIES
-=====================================================================
-
-sql/queries.sql DOES NOT EXIST YET.  [NOT BUILT YET]
-
-These are the 12 queries from PRD.md section 8 that must be written
-and explained. For each: what it shows and the SQL concept it
-demonstrates.
-
-  1. Matches for a given lost report, best score first
-     concept: multi-table JOIN with ORDER BY score DESC.
-  2. All unclaimed found items filtered by category / location / date
-     concept: WHERE with a dynamic filter list (the Browse endpoint).
-  3. Users with the most lost reports
-     concept: JOIN + GROUP BY + ORDER BY COUNT(*) DESC + LIMIT.
-  4. Hotspot locations: lost reports per location
-     concept: GROUP BY on a lookup join (admin Stats tab).
-  5. Items unclaimed for more than 30 days
-     concept: date arithmetic (DATEDIFF or CURDATE() - INTERVAL).
-  6. Category-wise count of resolved vs open reports
-     concept: conditional aggregation
-     (SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END)).
-  7. Lost reports with no matches
-     concept: LEFT JOIN ... WHERE m.match_id IS NULL (anti-join);
-     report 14 is there so this query returns a row.
-  8. Users who have found items AND also lost items
-     concept: IN subquery.
-  9. Claims pending more than 3 days
-     concept: date arithmetic + status filter (queue ageing).
-  10. Average days from report to resolution
-     concept: JOIN + AVG(DATEDIFF(...)).
-  11. Locations where found items outnumber lost reports
-     concept: GROUP BY + HAVING comparing counts to a subquery.
-  12. Full history of one item: found -> matches -> claims -> handover
-     concept: multi-JOIN across nearly every table.
-
-(Note: the PRD names this file at the top level of sql/; with the
-recent split it should live beside sql/mysql/ - or better, be written
-to run against sql/tidb/ as well, since no query in the list needs
-triggers or procedures. [UNVERIFIED - the team has not decided])
-
-
-=====================================================================
-12. SECURITY AND ERROR HANDLING
-=====================================================================
-
-PASSWORDS
-  Never stored plain. bcryptjs hashes each password with a random salt
-  (the stored string starts with $2b$10$... - the 10 is the cost
-  factor). Login compares with bcrypt.compare. The seeds ALREADY
-  store bcrypt hashes, so the swap is ready. In the current mock the
-  store keeps plain demo passwords for speed and compares them
-  directly - an explicit mock shortcut.  [MOCK ONLY]
-
-PARAMETERIZED QUERIES (AND WHY)
-  Every real query must use ? placeholders
-  (db.execute('SELECT ... WHERE email = ?', [email])) so values and
-  SQL text never mix; passing user input inside a query string is how
-  SQL injection happens ("' OR 1=1 --"). The route handlers are
-  structured so the swap keeps this rule - no string concatenation of
-  input.
-
-SESSION COOKIES
-  The session is an httpOnly cookie (JavaScript cannot read it, which
-  defeats XSS cookie theft), with sameSite lax. Mock mode stores the
-  user id; iron-session will add an encrypted, signed payload. Logout
-  clears it.  [MOCK ONLY]
-
-ADMIN-ONLY ROUTES
-  Handlers under /api/admin call a guard: no session -> HTTP 401
-  {"error":"Not logged in"}; session but role != admin -> HTTP 403
-  {"error":"Admin only"}. The UI hides the admin link but the API
-  does not trust the UI - the guard is on the server.  [MOCK ONLY]
-
-STATUS CODES AND ERROR MESSAGES
-  400 validation (bad email, missing fields, future date)
-  401 not logged in
-  403 not admin (or not the owner of the record)
-  404 the row does not exist
-  409 conflict - usually a rule enforced by a trigger in the MySQL
-      version, or by an app-side check in the TiDB version. The real
-      MySQL mode catches error 1644 (unhandled user-defined
-      exception, which is SIGNAL/45000) and returns HTTP 409 with
-      {"error": "<the trigger's MESSAGE_TEXT>"} verbatim; the TiDB
-      mode raises the same messages itself from the checks quoted in
-      section 3.
-  All errors are {"error": "message"} JSON; lib/api.js turns any
-  non-2xx into a JavaScript Error whose text is shown in a toast, so
-  the user always sees WHY something failed.  [MOCK ONLY]
-
-
-=====================================================================
-13. DEPLOYMENT
-=====================================================================
-
-CURRENT STATE OF THIS REPOSITORY (verified by listing the files)
-
-  - There are NO deployment config files: no vercel.json, no .vercel/
-    folder, no Netlify/Docker files. Nothing is hosted from this
-    repository right now. Whether a teammate deployed the repo
-    manually somewhere cannot be seen from these files. [UNVERIFIED]
-  - Everything runs locally with bun run dev on http://localhost:3000.
-  - The database story today: the app runs against the in-memory mock
-    store only. The MySQL server on the lab machine (or the TiDB
-    cluster) would be connected only when the routes are switched
-    (section 5).
-
-EVERY ROUTE'S STATE
-
-  [MOCK ONLY] all 21 route handlers:
-    register, login, logout, me,
-    categories, locations,
-    lost (create), lost/mine, lost/[id] (close),
-    lost/[id]/matches, lost/[id]/rematch,
-    found (create + list), found/[id],
-    claims (create), claims/mine,
-    admin/claims, admin/claims/[id]/verify,
-    admin/claims/[id]/reject, admin/stats, admin/audit
-  [DONE] none on real SQL yet.
-
-DEPLOYING LATER (the intended path, from README + APP_LOGIC)
-
-  Hosting: Vercel (the standard host for Next.js; no special config
-  files are needed in the repo for it to be deployable - but none
-  exist yet, and CI/vercel settings are not set up here). The mock
-  store itself would NOT work on a serverless host: it lives in one
-  process's memory, and serverless instances do not share state - a
-  real database (MySQL local or TiDB Cloud) is required for any
-  hosted run. That is exactly why the TiDB files exist: a TiDB
-  Starter cluster is free, reachable from Vercel, and needs no local
-  MySQL install.
-
-  DATABASE: TiDB Cloud (if going cloud) -
-    host <cluster>.prod.<region>.tidbcloud.com, port 4000,
-    TLS required, foreign_key_checks always ON.
-    The SSL/TLS detail matters: the mysql2 connection string needs
-    rejectUnauthorized true (README's example).
-
-  ENVIRONMENT VARIABLES (NAMES ONLY - never commit values):
-    from the PRD's example usage of process.env:
-      DB_HOST, DB_PORT (4000 on TiDB), DB_USER, DB_PASSWORD, DB_NAME
-    plus a session secret for iron-session:
-      SESSION_SECRET
-    (An alternative shape: one DATABASE_URL-style connection string
-    as in README's lib/db.js example. The exact list has not been
-    frozen by the team yet - the PRD names DB_HOST and "the other
-    variables", the README shows a full connection string.
-    [UNVERIFIED - there is no .env.example in the repository])
-  Secrets live in .env.local, which is not committed (PRD section 10).
-
-
-=====================================================================
-14. DEMO SCRIPT
-=====================================================================
-
-Prepare: run bun run db:reset (when real SQL is wired) or just
-restart the dev server (the mock store rebuilds). Open the app at
-http://localhost:3000 and MySQL Workbench / the mysql CLI beside it,
-pointed at the database the app is using (sql/mysql/ for the viva -
-see section 15's question on which version to demo).
-
-  1. LOG IN AS THE STUDENT. Open / : LOGIN tab, user@test.com /
-     user123. You land on /dashboard. Point at the greeting, the
-     counters (matched reports exist from the seed) and "Recent
-     possible matches" - report 1 'Black iPhone 13' shows matches
-     item 1 (100), item 13 (90), item 11 (60).
-     DB point at: SELECT * FROM LostReports WHERE user_id = 2;
-
-  2. REPORT A LOST ITEM. "Report Lost". Fill title "Blue water
-     bottle", category Other, location Mess, date yesterday, short
-     description. Save -> toast -> /my-reports page shows the new
-     report; matching ran on creation.
-     DB point at: the AuditLog row ("Lost report ... filed by
-     user 2") and Matches WHERE report_id = <new>.
-
-  3. REPORT A FOUND ITEM (a second user, or the admin, finds it).
-     Log out; log in as e.g. rohan.mehta@example.edu / user123;
-     "Report Found"; matching title and category Other + location
-     Mess; date yesterday. Now the item is unclaimed.
-     DB point at: SELECT * FROM FoundItems
-     ORDER BY item_id DESC;
-
-  4. SEE THE MATCH. Log back in as the student; /my-reports shows the
-     water bottle report with status 'matched'; expand the row - the
-     found item appears with its score progress bar.
-     DB point at: SELECT * FROM Matches WHERE report_id = <new>;
-
-  5. SUBMIT A CLAIM. Click the match -> the item page. Write proof
-     text ("Green steel bottle with a band sticker"). Optionally link
-     the lost report. Submit -> the item badge flips to claim
-     pending.
-     DB point at: SELECT * FROM Claims ORDER BY claim_id DESC; and
-     FoundItems.status = 'claim_pending'.
-
-  6. LOG IN AS THE ADMIN. admin@test.com / admin123. The navbar now
-     shows ADMIN. The claim queue lists the pending claims with
-     proof.
-
-  7. REJECT ONE / VERIFY ONE. Click Reject on a weak claim (note:
-     "Proof not specific enough") - the item goes back to unclaimed
-     if no pending claims remain. Click Verify on the good one - item
-     becomes claimed, the linked report resolved, other pending
-     claims auto-rejected, a Handover row inserted.
-     DB point at:
-       SELECT status FROM FoundItems WHERE item_id = <that>;
-       SELECT status FROM LostReports WHERE report_id = <linked>;
-       SELECT * FROM Handovers ORDER BY handover_id DESC;
-
-  8. SHOW THE STATS AND AUDIT LOG. Stats tab: hotspot locations,
-     category counts, the 3 stale items. AuditLog tab: every event -
-     the recorded history of the demo you just performed.
-
-  9. SHOW THE FIVE MOCK RULES (optional, quick):
-     claim an already claimed item  -> 409 "This item is no longer
-     available to claim";
-     claim item 9 as user 2         -> "You cannot claim an item you
-     found yourself";
-     re-claim the same item         -> "You already have a pending
-     claim on this item";
-     verify the second claim on the same item (or after it was
-     reviewed) -> "Another claim is already verified for this item" /
-     "Claim not found or already reviewed";
-     any future date in a form      -> 400 "Date cannot be in the
-     future" (mock) / the trigger's message (real MySQL).
-
-  10. RE-RUN MATCHING. On /my-reports click Re-run matching on a
-      report after new items arrived - matches_created toast.
-      DB point at: new rows in Matches.
-
-
-=====================================================================
-15. VIVA QUESTIONS AND ANSWERS
-=====================================================================
-
-Q1. Why is the schema in 3NF?
-A. So each fact lives in one place. Categories and Locations are
-   separate tables, so a category name is stored once; reports and
-   items reference it by id. That removes update, insert and delete
-   anomalies (renaming a category updates one row; counts cannot
-   split; an unused category still exists).
-
-Q2. What is a foreign key?
-A. A column (or set) whose values must match a primary key in another
-   table. LostReports.user_id references Users.user_id, so no report
-   can belong to a user who does not exist.
-
-Q3. What does ON DELETE CASCADE do, and where do you use it?
-A. Deleting the parent row deletes child rows automatically. We use
-   it only for Matches: if a lost report is deleted, its matches
-   become meaningless, so they go with it.
-
-Q4. Why RESTRICT for users / categories / locations?
-A. History must stay intact. You cannot delete a user who has
-   reports, or a category in use - the request errors instead of
-   silently destroying records.
-
-Q5. What does ON DELETE SET NULL cover?
-A. Optional references. Claims.report_id is optional; if its report
-   is deleted the claim survives but the link is set to NULL
-   (report_id is nullable for this reason).
-
-Q6. What is a trigger?
-A. Database code that fires automatically on a row event (BEFORE or
-   AFTER INSERT / UPDATE / DELETE). Our claim rules, audit writing
-   and status sync are triggers.
-
-Q7. Why put rules in triggers instead of the app?
-A. The database is the last line of defence - any client (app,
-   Workbench, mysql CLI) gets the same rules. Application checks can
-   be forgotten or bypassed; trigger rules cannot.
-
-Q8. Trigger vs stored procedure?
-A. A trigger fires automatically on an event; nobody calls it. A
-   procedure is saved code you call explicitly (CALL). Our triggers
-   enforce single-row rules; sp_find_matches and sp_verify_claim run
-   when the app decides to.
-
-Q9. Why does a trigger use SIGNAL '45000'?
-A. 45000 is the SQLSTATE class for user-defined errors. SIGNAL makes
-   the statement fail with our message; the app maps it to HTTP 409
-   with the same text, so the user sees a readable reason.
-
-Q10. Why are future-date checks triggers and not CHECK?
-A. MySQL cannot call non-deterministic functions like CURDATE() in a
-   CHECK constraint, so a BEFORE INSERT trigger raises the error.
-
-Q11. What is a stored procedure?
-A. A stored SQL program in the database, called with CALL. It can
-   branch, run transactions, and return a result set.
-
-Q12. What is a transaction? Why does verify need one?
-A. A unit of work where all statements commit together or roll back
-   together. Verify touches the claim, the item, the linked report,
-   the other claims and inserts a handover - if any step fails the
-   rest must be undone; otherwise the data would be contradictory.
-
-Q13. What does ACID mean?
-A. Atomicity (all or nothing), Consistency (rules stay true),
-   Isolation (concurrent runs do not interleave badly; we also use
-   SELECT ... FOR UPDATE to lock the claim row), Durability (committed
-   data survives crashes).
-
-Q14. What happens if the handover INSERT fails inside
-     sp_verify_claim?
-A. The exit handler catches the exception, runs ROLLBACK (undoing the
-   verify, the item/report status changes and the other rejections)
-   and RESIGNALs the error so the route returns 409.
-
-Q15. How do you prevent two verified claims on one item?
-A. Two layers: trg_claim_before_update blocks an update to verified
-   when another verified claim exists for the item; sp_verify_claim
-   additionally runs inside a transaction with FOR UPDATE.
-
-Q16. How does matching work?
-A. sp_find_matches scores unclaimed / claim-pending found items in
-   the same category: category 40 + same location 30 + found within
-   7 days after the loss 20 + first-title-word overlap 10; rows with
-   score >= 50 are stored in Matches; the report becomes 'matched'.
-
-Q17. Why is the matching score >= 50?
-A. Category alone is 40, so any same-category item cannot become a
-   match by accident; it needs at least one more positive signal
-   (e.g. the date window +20, or location +30) to reach 50+. It keeps
-   obvious noise out.
-
-Q18. Why is Matches INSERT IGNORE / UNIQUE (report_id, item_id)?
-A. Re-running matching must not create duplicates: the UNIQUE pair
-   constraint forbids duplicates and INSERT IGNORE skips existing
-   pairs, so re-runs are idempotent.
-
-Q19. What is a view and why have two?
-A. A saved SELECT query usable like a table. v_open_found_items hides
-   the category/location joins from the browse route;
-   v_claim_details gives the admin queue its rows in one place.
-
-Q20. What is the difference between INNER and LEFT JOIN here?
-A. v_claim_details uses a LEFT JOIN on the linked report because not
-   every claim links a report; a LEFT JOIN keeps those rows with
-   report_title NULL where an INNER JOIN would drop them.
-
-Q21. What is SQL injection and how do you prevent it?
-A. Entering SQL through user input into a concatenated query. We
-   prevent it with ? placeholders - the driver sends values and SQL
-   text separately, so quotes in the input are data, not code.
-
-Q22. How does the item go from unclaimed to claimed?
-A. Only through claims. The claim-insert trigger sets claim_pending;
-   verifying a claim sets claimed; if a claim is rejected and no
-   pending claims remain, back to unclaimed.
-
-Q23. What is the AuditLog and who writes it?
-A. A table written ONLY by the triggers in the MySQL version (INSERT
-   and STATUS_CHANGE rows). Nobody writes to it from the app - that
-   is the point: the history is database-guaranteed. On TiDB the app
-   writes it explicitly.
-
-Q24. Why does the frontend only call lib/api.js and not the database?
-A. Separation of concerns: pages never touch SQL, so switching a
-   route from mock to real SQL changes nothing in the UI; and no page
-   can run an unparameterized query by accident.
-
-Q25. What are ENUMs and why use them for status?
-A. A column restricted to a fixed list of strings. Statuses are a
-   small controlled vocabulary - ENUM keeps invalid values out of the
-   database itself.
-
-Q26. How would you show two claims competing for the same item?
-A. Seed item 3 has two pending claims (6 and 7). Verifying claim 6 in
-   the admin queue rejects claim 7 automatically with the note
-   "Another claim was verified for this item".
-
-Q27. What are the limitations of the matching?
-A. It is rule-based (category, location, date window, one title
-   word). No fuzzy search, no synonyms, no images or machine
-   learning - a lost "iPhone 15" that shares neither the first word
-   nor the exact dates can still be missed.
-
-Q28. Why bcrypt and not plain passwords or MD5?
-A. bcrypt is a slow, salted, adaptive one-way hash designed exactly
-   for passwords; plain text is a data breach waiting to happen, and
-   MD5/SHA are too fast to crack.
-
-Q29. Why is the session cookie httpOnly?
-A. Because JavaScript (document.cookie) cannot read httpOnly cookies,
-   so an XSS bug cannot steal the session.
-
-Q30. What is AUTO_INCREMENT and why not generate ids in the app?
-A. The database assigns the next number per insert. Two concurrent
-   inserts cannot collide, and the id exists only after the insert
-   anyway (that is why the audit triggers are AFTER triggers).
-
-THE NEW BATCH (after the TiDB split):
-
-Q31. Why did you make a TiDB version of the SQL?
-A. The app is meant to be hosted in the cloud (Vercel) with a cloud
-   database. TiDB's free Starter tier fits a student project, and it
-   is MySQL-compatible - tables, foreign keys, CHECKs, ENUMs and
-   views all work unchanged - but it does not support triggers or
-   stored procedures, so we split the SQL: sql/mysql/ keeps them for
-   the local viva run, sql/tidb/ documents every rule they enforced
-   as plain SQL for the app to execute (sql/tidb/APP_LOGIC.md).
-
-Q32. What is lost when the triggers and procedures are gone?
-A. Automaticity. On MySQL the rules fire no matter who inserts the
-   row; on TiDB the application is trusted to run the equivalent
-   statements. Concretely: audit rows can be forgotten, status flips
-   can be skipped, future dates / double claims / self-claims are
-   only blocked because OUR route checks them. The same DB-level
-   constraints (FK, UNIQUE, CHECK, ENUM) still protect the data.
-
-Q33. How are the rules enforced now?
-A. In the route handlers, inside transactions, following
-   APP_LOGIC.md: check-then-act with SELECT ... FOR UPDATE under
-   row lock, then the INSERT/UPDATEs, then COMMIT; failures become
-   HTTP 409 with the same messages the triggers used to raise.
-
-Q34. How do you keep atomicity without the stored procedure?
-A. The route handler opens one transaction itself:
-   pool.getConnection(), beginTransaction(), try { statements },
-   commit(); on any error rollback() and re-raise to send 409. The
-   atomic guarantee comes from the transaction, not from where the
-   code lives.
-
-Q35. What could go wrong with two admins verifying at once?
-A. Say admin A and admin B both open claim X. On MySQL: whoever's
-   UPDATE lands first wins; the second one's BEFORE UPDATE trigger
-   fails ('This claim has already been reviewed') - and inside
-   sp_verify_claim the SELECT ... FOR UPDATE serialises them. On
-   TiDB: the flattened script does the same FOR UPDATE first, and a
-   second transaction blocks until the first commits, then reads the
-   row as no longer pending and aborts. If the code SKIPPED the
-   FOR UPDATE / didn't keep the transaction, both could pass the
-   "status = pending" check and double-verify - that is the danger
-   of moving the rule into the app.
-
-Q36. Which version do you demo in the viva, and why?
-A. The local MySQL version (sql/mysql/). The project's heart is the
-   triggers, procedure and audit automation; that only visibly works
-   there. The TiDB version is the honest answer to "would this run in
-   production?" - same schema and data, rules moved to the app, and
-   the fact we documented the equivalence is itself a talking point.
-
-Q37. What is TiDB and why is it MySQL-compatible but not identical?
-A. TiDB is an open-source distributed NewSQL database that speaks the
-   MySQL protocol and supports most MySQL syntax. A distributed
-   design makes triggers/procedures hard to serve, so TiDB does not
-   offer them; transactions behave like MySQL's (it uses pessimistic
-   row locks), AUTO_INCREMENT ids may skip, and TiDB Cloud forces
-   TLS and keeps foreign_key_checks permanently enabled.
-
-Q38. Your seed sanity check expects Matches 28 - why not 27?
-A. Because that is what the scoring formula genuinely produces for
-   the 20 reports against all 20 items: 18 reports get at least one
-   match. Report 10 ("Bike keys", lost 15 days ago) alone scores two
-   - item 20 (Library, within the window, first word "bike" matches,
-   100) and item 4 (different location but within the date window,
-   60). The mock store computes the same 28 rows with the same
-   formula, and both were verified.
-
-
-=====================================================================
-16. LIMITATIONS AND FUTURE WORK
-=====================================================================
-
-HONEST STATE OF THIS REPOSITORY
-
-  - ALL API routes run on the in-memory mock store (lib/mock-store.js).
-    No mysql2, no lib/db.js, no real SQL calls from the app.
-    [MOCK ALL]
-  - Auth is a mock emulation: lib/mock-auth.js stores the user id in
-    a simple httpOnly cookie; mock passwords are plain text in the
-    store (documented there). bcryptjs hashing and iron-session are
-    the planned replacement.  [MOCK ONLY]
-  - sql/queries.sql (the 12 required queries) is not written yet.
-    [NOT BUILT YET]
-  - Matching is rule-based only: no fuzzy title search (beyond the
-    single first-word rule), no learning, no images or image
-    comparison.  [MOCK ONLY logic - the real procedure matches it]
-  - Admin "record handover" is folded into sp_verify_claim (the
-    procedure / flattened script inserts the Handover with a remark).
-    A separate handover screen per FR7 is not built.
-    [NOT BUILT YET]
-  - No push / email notifications (deliberate non-goal).
-  - No pagination or rate limits on list endpoints.
-  - The mock store resets when the server process restarts (it is
-    memory). Real mode removes this problem entirely.
-  - Nothing is deployed: no Vercel (or other) config exists in the
-    repository. The TiDB split is the preparation for a hosted run.
-  - The TiDB APP_LOGIC translation has one known documentation gap:
-    the flattened verify script does not include the AuditLog row for
-    the Handovers table that the MySQL handover after-insert trigger
-    writes (the mock code does write it).  [DOCUMENTED GAP]
-  - Language only English; no localisation.
-
-PLANNED WORK (from README, PRD schedule)
-
-  - replace mock route bodies with real SQL, one at a time (order:
-    auth, found/lost, claims, admin), keeping the response shapes;
-    against TiDB the SQL to run is exactly APP_LOGIC.md's statements
-  - write sql/queries.sql and run all 12 required queries on the seed
-  - docs/: ER diagram export and the project report
-  - final rehearsal of the demo script before the deadline
-    (Thursday, 22 Oct).
-
-
-=====================================================================
-17. GLOSSARY
-=====================================================================
-
-  3NF (third normal form)  a table shape where no non-key column
-              depends on another non-key column; removes update,
-              insert and delete anomalies.
-  ACID        Atomicity, Consistency, Isolation, Durability - the four
-              guarantees of a transaction.
-  App Router  Next.js' routing: a folder tree under app/ where each
-              page.js is a page and each route.js is an endpoint.
-  AUTO_INCREMENT  MySQL feature: assigns the next integer to a
-              primary key automatically on insert.
-  bcrypt      password hashing algorithm: slow and salted by design.
-  CHECK       constraint with a condition every row must satisfy.
-  claim       a user's statement, with proof, that a found item is
-              theirs; reviewed by an admin.
-  client component ("use client")  React component that runs in the
-              browser and can use state/handlers.
-  cookie (httpOnly)  a browser-stored value that HTTP requests send
-              automatically; httpOnly keeps it away from scripts.
-  CURDATE()   MySQL function: today's date (drives relative seed
-              dates and the future-date triggers).
-  data-bs-theme  Bootstrap 5.3's attribute for its built-in light /
-              dark colour modes; set on <html> by ThemeToggle.
-  ENUM        column type limited to a fixed list of string values.
-  Exit handler  procedure code that runs on an SQL error (we use it
-              to ROLLBACK and RESIGNAL).
-  foreign key (FK)  column whose value must exist in another table's
-              primary key.
-  handover    the recorded moment an item was physically returned.
-  httpOnly    cookie flag: JS cannot read or change the cookie.
-  hot reload  Next.js dev feature: edited files apply without a full
-              restart (the mock store survives it via globalThis).
-  http status 400 / 401 / 403 / 404 / 409  bad request / not logged
-              in / not allowed / not found / conflict.
-  INSERT IGNORE  insert but silently skip rows that violate a UNIQUE
-              key instead of failing.
-  junction table  a table that turns a many-to-many relationship into
-              pairs (our Matches (report_id, item_id)).
-  LAST_INSERT_ID()  MySQL function: the AUTO_INCREMENT value of the
-              last row the connection inserted (used by the app to
-              replace trigger access to NEW.x).
-  localStorage  browser key-value storage; keeps the theme choice.
-  LOCATE / SUBSTRING_INDEX  MySQL string functions used to compare
-              the first word of a title.
-  match score  number 0..100 computed from category, location, date
-              window and title word overlap.
-  mock store  lib/mock-store.js - in-memory fake DB that mirrors the
-              seed, used while the app is mock-first.
-  MySQL 8     the local relational database (all features used).
-  mysql2      the JavaScript driver library for MySQL / TiDB.
-  NewSQL      a modern distributed SQL database family (TiDB).
-  NOT NULL    column constraint: a value is mandatory.
-  ORM         object-relational mapper; wraps SQL behind objects. Not
-              used here deliberately (raw SQL is the point).
-  pessimistic transaction  transactions that LOCK rows on read
-              (SELECT ... FOR UPDATE) instead of retrying on write
-              conflict; TiDB supports this mode, which the flattened
-              verify script relies on.
-  primary key (PK)  the column (or set) that uniquely identifies a
-              row.
-  procedure   a saved SQL program invoked with CALL.
-  ? placeholder  a parameter marker in SQL text; the driver sends
-              values separately, preventing injection.
-  RESIGNAL    re-raises the caught error after a handler so the
-              caller sees the real cause.
-  RESTRICT    ON DELETE action that refuses deleting a parent that
-              still has children.
-  ROLLBACK    undoes all changes made inside an open transaction.
-  route handler  app/api/.../route.js - a Next.js backend endpoint.
-  SIGNAL      SQL statement that aborts with a custom error message.
-  SQLSTATE 45000  the class reserved for user-defined errors.
-  STATUS_CHANGE  our AuditLog action for status flips of claims.
-  stored procedure  see procedure.
-  suppressHydrationWarning  React prop that skips ONE element's
-              attribute-mismatch warning (on <html>, because the
-              theme script runs pre-hydration by design).
-  TiDB        a MySQL-compatible distributed database; free Starter
-              tier; NO triggers, procedures, events or UDFs.
-  TLS         transport encryption (required by TiDB Cloud).
-  transaction a group of statements that commit together or roll back
-              together (section 8).
-  trigger     database code that fires automatically on a row event.
-  UNIQUE      constraint that forbids duplicate values (or pairs).
-  view        a named saved SELECT usable like a table.
-  warm palette  our light theme colours (paper #f7f6f2, ink #16150f,
-              teal accent), brightened into dark-mode tokens.
-
-=====================================================================
-END OF FILE
-=====================================================================
+    The scoring CASEs are the four weights of 3.4. INSERT IGNORE + the
+    UNIQUE pair makes reruns idempotent; ROW_COUNT() counts only NEW
+    pairs; the procedure RETURNS its result as a one-row result set.
+
+  sp_verify_claim(IN p_claim_id, p_admin_id, p_note, p_remarks)
+    THE TRANSACTION - ACID made concrete (see 5.4):
+      DECLARE EXIT HANDLER FOR SQLEXCEPTION
+        BEGIN ROLLBACK; RESIGNAL; END;
+      admin check (role='admin') else SIGNAL;
+      START TRANSACTION;
+      SELECT item_id INTO v_item FROM claims
+        WHERE claim_id=? AND status='pending' FOR UPDATE;
+      IF v_item IS NULL THEN SIGNAL 'Claim not found or already reviewed';
+      UPDATE claims SET status='verified' ... ;     (fires the triggers)
+      UPDATE claims SET status='rejected',
+             admin_note='Another claim was verified for this item'
+             WHERE item_id=v_item AND claim_id<>p_claim_id
+               AND status='pending';
+      INSERT INTO handovers ...;
+      COMMIT;
+    Every step succeeds or NONE does: a half-verified claim with no
+    handover is impossible. FOR UPDATE row-locks the claim so two admins
+    clicking Verify at once serialize: the second one re-reads the status
+    after the first commits and gets the friendly 409.
+
+4.12 views
+----------
+  v_open_found_items   unclaimed items flattened with category + location
+                       names (the Browse screen is this view + filters).
+  v_claim_details      the admin queue: claim + claimant + item + linked
+                       report in one shape, so the UI never writes a JOIN.
+  Views = logical data independence: consumers see stable shapes while
+  the underlying joins evolve.
+
+4.13 seed (sql/mysql/seed.sql) - what each block demonstrates
+-------------------------------------------------------------
+  10 users (admin + Anchal Singh as user@test.com/user123 + 8 students),
+  9 categories, 8 locations - the lookup scaffolding.
+  20 lost reports / 20 found items, dates relative to CURDATE() - the
+  data NEVER goes stale; every demo day looks lived-in.
+  CALL sp_find_matches(1..20) then one report closed - produces the
+  28 matches and 18 'matched' reports the demo story needs.
+  9 claims: 3 verified (with sp_verify_claim), 2 rejected (one by
+  sp_verify_claim's auto-reject, one by hand), 4 pending - every status
+  badge in the UI has a row.
+  3 handovers + back-dated reviewed_at/handed_at - the average-resolution
+  numbers look realistic, not "0 days everywhere".
+  ~57 audit rows - the audit tab is full on first open.
+
+4.14 the 12 required queries - where each one lives
+---------------------------------------------------
+   1 matches best-first            GET /api/lost/[id]/matches + view
+   2 filtered unclaimed items      GET /api/found (v_open_found_items)
+   3 users with most lost reports  GROUP BY + ORDER BY + LIMIT (queries.sql)
+   4 hotspot locations             /api/admin/stats hotspots (GROUP BY)
+   5 unclaimed > 30 days           /api/admin/stats stale_items
+                                   (DATEDIFF arithmetic)
+   6 category open vs resolved     /api/admin/stats categories
+                                   (conditional aggregation)
+   7 reports with no matches       LEFT JOIN ... IS NULL (queries.sql)
+   8 found AND lost by same user   IN-subquery (queries.sql)
+   9 claims pending > 3 days       NOW() - created_at filter (queries.sql)
+  10 avg days report -> resolution JOIN + AVG (queries.sql)
+  11 found outnumber lost per site HAVING with subquery (queries.sql)
+  12 full history of one item     multi-JOIN found->matches->claims->
+                                  handovers (queries.sql)
+
+
+================================================================================
+ 5. RDBMS CONCEPTS USED - A SURVEY
+================================================================================
+
+Normalization (1NF -> 3NF)
+--------------------------
+  1NF: atomic cells - a report is one row with one title, one date, one
+       category; no repeating "keyword1..keyword3" columns anywhere.
+  2NF: every non-key attribute depends on the WHOLE key - each fact
+       (user, category, location, report, item, claim, handover) is its
+       own table; nothing rides on part of a composite key (the only
+       composite is uq_match_pair, which is a constraint, not a key).
+  3NF: no transitive chains - the category NAME is never stored on a
+       report (only category_id, name lives once in categories); the
+       claimant's NAME is never stored on a claim (only claimant_id).
+       Change "Academic Block" to "Academic Block 2" in ONE row and every
+       report updates with it - no update anomalies.
+
+Integrity - the three flavors
+-----------------------------
+  Entity:      PKs everywhere; UNIQUE email on users, UNIQUE name on both
+               lookups, UNIQUE (report_id, item_id) on matches, UNIQUE
+               claim_id on handovers.
+  Referential: nine FKs with three different ON DELETE policies, each
+               chosen by MEANING - RESTRICT where history must be
+               protected (reports, items, claims), CASCADE where the
+               child is meaningless alone (matches), SET NULL where the
+               link is optional (claims.report_id, claims.reviewed_by).
+  Domain:      ENUM status machines on users/lost_reports/found_items/
+               claims; CHECK title >= 3 chars on both big tables, CHECK
+               score BETWEEN 0 AND 100; NOT NULLs; DATE/DATETIME types;
+               DEFAULT 'open'/'unclaimed'/'pending'.
+  Plus the rules SQL constraints cannot express (they need reads or
+  CURDATE()): no future dates, the four claim rules, one-verified-per-
+  item, handover-only-after-verify - all trigger territory (Section 4.10).
+
+Relationships & cardinality
+---------------------------
+  users 1:N lost_reports          users 1:N found_items (finder)
+  categories 1:N both             locations 1:N both
+  lost_reports 1:N matches        found_items 1:N matches
+  found_items 1:N claims          users 1:N claims (claimant)
+  lost_reports 0..1 claims (SET NULL optional link)
+  claims 1:1 handovers (UNIQUE FK)
+  users 0..1 claims-reviewed (reviewed_by SET NULL)
+
+Transactions & concurrency (ACID)
+---------------------------------
+  Atomicity:    sp_verify_claim wraps verify + mass-reject + handover in
+                one BEGIN...COMMIT with an EXIT HANDLER that ROLLBACKs and
+                RESIGNALs. A crash between "verified" and "handover"
+                leaves NO trace - the claim stays pending. The TiDB twin
+                runs the identical steps in one route-level transaction.
+  Consistency:  after every transaction the constraints + triggers (or
+                their app twins) re-assert every invariant: statuses
+                agree across three tables, exactly one verified claim per
+                item, one handover per verified claim, audit trail
+                complete.
+  Isolation:    InnoDB default REPEATABLE READ + SELECT ... FOR UPDATE.
+                Two admins verifying the same claim race on the same
+                claim row: tx 2 blocks inside FOR UPDATE until tx 1
+                commits, then finds status <> 'pending' and raises
+                "Claim not found or already reviewed" -> 409. No lost
+                updates, no double handovers - the lock is only the gate;
+                the UNIQUE + status machine are the real guarantee.
+  Durability:   COMMIT + the engine's redo log (MySQL InnoDB / TiDB
+                Raft-majority replication). Nothing app-level to do.
+
+Deliberate design choices (the "why" answers)
+---------------------------------------------
+  Surrogate keys everywhere        - natural keys rot; ids never change.
+  VARCHAR phone                    - phones are text, not arithmetic.
+  DECIMAL-free zone, but DATE for  dates: DATE math (the 7-day window,
+                                   the 30-day staleness) stays in SQL.
+  matches as a STORED table        - suggestions are materialized so the
+                                   "my matches" screen is a single indexed
+                                   read, and rematch is cheap (INSERT
+                                   IGNORE). The score is frozen at match
+                                   time - the suggestion must not silently
+                                   change under the user.
+  audit_log without FKs            - logs must survive the referenced row.
+  status machines as ENUMs         - closed domains, indexable, self-
+                                   documenting in SHOW CREATE TABLE.
+  report_id SET NULL               - detach, never delete, history.
+
+
+================================================================================
+ 6. DEPLOYMENT DIVERGENCE NOTE (CANONICAL MYSQL VS TIDB CLOUD)
+================================================================================
+
+sql/mysql/ is complete MySQL 8: triggers, procedures, views. The hosted
+demo runs on TiDB Cloud (free tier), which does not implement
+CREATE TRIGGER / CREATE PROCEDURE / CREATE FUNCTION at all. So sql/tidb/
+loads tables + lookup rows + views (all fully supported - FKs enforced,
+CHECKs enforced, ENUMs, views) and every trigger/procedure behavior is
+written out as plain SQL in sql/tidb/03_seed.sql, and lives in the
+application layer for runtime writes - the mock-store functions in
+Section 3 are line-for-line the trigger bodies, and sql/tidb/APP_LOGIC.md
+is the ready-to-run SQL translation for the mysql2 swap:
+
+  trg_lost/found_before_insert  -> date guard in createLostReport /
+                                   createFoundItem (400 on future dates)
+  trg_lost/found_after_insert   -> addAudit(...) after every insert
+  trg_claim_before_insert       -> the four 409 rules in createClaim
+  trg_claim_after_insert        -> claim_pending flip + audit row
+  trg_claim_before_update       -> "already reviewed" / "one verified
+                                   per item" guards in verifyClaim
+  trg_claim_after_update        -> claimed/resolved/unclaimed syncs in
+                                   verifyClaimInStore / rejectClaimInStore
+  trg_handover_before_insert    -> verified-only guard before the insert
+  sp_find_matches               -> runMatching() at runtime; the
+                                   INSERT ... SELECT with identical scoring
+                                   in sql/tidb/03_seed.sql for the seed
+  sp_verify_claim               -> verifyClaimInStore(): verify + reject
+                                   other pendings + handover, one
+                                   transaction when on real SQL
+
+On a real MySQL 8 host NOTHING changes: sql/mysql/reset.sql activates the
+trigger/procedure layer again and the same app keeps working - the
+app-side logic is idempotent-shaped (guards + guarded UPDATEs), not
+duplicative.
+
+Load order on TiDB Cloud (from the project root):
+    mysql --host <HOST> --port 4000 -u <USER> -p \
+          --ssl-mode=VERIFY_IDENTITY < sql/tidb/00_create_database.sql
+    (then 01_schema.sql, 02_views.sql, 03_seed.sql, 04_sanity_check.sql)
+
+Load order on local MySQL 8:
+    mysql -u root -p < sql/mysql/reset.sql
+
+================================================================================
+ end of document - Anchal Singh and Nandini Khandelwal
+================================================================================
