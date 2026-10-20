@@ -1,12 +1,14 @@
 "use client";
 
 // app/dashboard/page.js
-// Greeting, three big action cards, summary counters and a list of the
-// most recent possible matches for this user's lost reports.
+// Greeting, three big action cards, summary counters, the lost-reports
+// relay (the user's own reports with status badges and match counts)
+// and a list of the most recent possible matches.
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
+import StatusBadge from "@/components/StatusBadge";
 import { getMatches, getMyClaims, getMyLost } from "@/lib/api";
 import { showToast } from "@/lib/toast";
 
@@ -64,6 +66,31 @@ function DashboardBody({ user }) {
         <Counter label="My open reports" value={reports === null ? "..." : openReports} />
         <Counter label="My pending claims" value={claims === null ? "..." : pendingClaims} />
         <Counter label="Matches found" value={reports === null ? "..." : matchCount} />
+      </div>
+
+      <div className="card shadow-sm mb-4">
+        <div className="card-header bg-body fw-semibold d-flex justify-content-between align-items-center">
+          <span>My lost reports</span>
+          <Link href="/my-reports" className="small text-decoration-none">
+            Manage in My reports &rarr;
+          </Link>
+        </div>
+        <div className="card-body">
+          {reports === null ? (
+            <p className="text-muted mb-0">Loading your reports...</p>
+          ) : reports.length === 0 ? (
+            <p className="text-muted mb-0">
+              You have not reported anything lost yet.{" "}
+              <Link href="/report-lost">Report a lost item</Link> and its possible matches will show up here.
+            </p>
+          ) : (
+            <div className="list-group list-group-flush">
+              {reports.slice(0, 5).map((r) => (
+                <ReportRow key={r.report_id} report={r} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card shadow-sm">
@@ -124,5 +151,28 @@ function Counter({ label, value }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// One row of the lost-reports relay. Everything links to /my-reports,
+// where the matches of that report are expanded.
+function ReportRow({ report }) {
+  return (
+    <Link href="/my-reports" className="list-group-item list-group-item-action">
+      <div className="d-flex justify-content-between align-items-center gap-2">
+        <div>
+          <div className="fw-semibold">{report.title}</div>
+          <div className="small text-muted">
+            {report.category} · {report.location} · lost on {report.date_lost}
+          </div>
+        </div>
+        <div className="d-flex align-items-center gap-3">
+          <span className="small text-muted">
+            {report.match_count === 1 ? "1 match" : `${report.match_count} matches`}
+          </span>
+          <StatusBadge status={report.status} />
+        </div>
+      </div>
+    </Link>
   );
 }

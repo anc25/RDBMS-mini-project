@@ -71,7 +71,7 @@ What changed for TiDB:
 app/
   layout.js              Bootstrap 5.3 CDN <link>, <Navbar/>, <ToastHost/>
   page.js                landing page + login/register tabs
-  dashboard/page.js      greeting, action cards, counters, recent matches
+  dashboard/page.js      greeting, action cards, counters, lost-reports relay, recent matches
   report-lost/page.js    lost report form
   report-found/page.js   found item form (+"currently stored at")
   browse/page.js         filter bar + card grid of unclaimed found items

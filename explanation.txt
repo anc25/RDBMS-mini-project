@@ -162,7 +162,11 @@ app/dashboard/page.js                 DASHBOARD
   Loads my reports and my claims in parallel, computes counters
   (open reports, pending claims, total matches), then fetches the matches
   of every active report and shows the best five, highest score first,
-  as recent "possible matches".
+  as recent "possible matches". Below the counters sits the lost-reports
+  relay: the user's own reports (newest five) with status badge, category
+  · location · lost-on date and match count, every row linking to
+  /my-reports where the matches expand. The relay reuses the
+  already-loaded reports state - no extra request.
 
 app/report-lost/page.js               LOST REPORT FORM
   Category and location dropdowns come from /api/categories and
