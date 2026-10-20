@@ -1,8 +1,10 @@
 -- =====================================================================
 -- schema.sql : tables and constraints for Campus Lost & Found
--- Target: TiDB Cloud (MySQL-compatible). Run second, after 00_create_database.sql.
+-- Target: TiDB Cloud (MySQL-compatible). Creates the database itself,
+-- so you can paste this whole file into the TiDB Cloud SQL console in
+-- one go - no "No database selected" errors.
 --   mysql --host <HOST> --port 4000 -u <USER> -p --ssl-mode=VERIFY_IDENTITY \
---         -D lostfound < sql/tidb/01_schema.sql
+--         < sql/tidb/01_schema.sql
 --
 -- TiDB Cloud notes (differences from the local MySQL version):
 --   * Triggers and stored procedures are NOT supported by TiDB, so none are
@@ -14,6 +16,7 @@
 --     generated ids may jump (they are unique, just not consecutive).
 -- =====================================================================
 
+CREATE DATABASE IF NOT EXISTS lostfound CHARACTER SET utf8mb4;
 USE lostfound;
 
 -- ---------- Users ----------
